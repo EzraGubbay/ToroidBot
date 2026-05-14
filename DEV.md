@@ -14,15 +14,25 @@ CTF-POC is an AI-powered multi-agent system that generates complete, deployable 
 
 ```
 User Prompt → Pydantic-AI Agent Pipeline:
-  Architect (RAG) → Developer (Code) → DevOps (Docker) → Solver (Verify) → END
+  Architect (RAG) → Storyteller → Developer (Code) → DevOps (Docker) → Solver (Exploit) → Validator ─┐
+                                                                                                       │
+  ┌────────────────────────────────────────────────────────────────────────────────────────────────────┘
+  │  Pass? → END
+  │  Fail? → feed errors back to Developer (retry loop)
 ```
 
-- **Architect**: designs the challenge concept using RAG over the knowledge base
-- **Developer**: writes the vulnerable source code
+- **Architect**: designs the challenge concept (vulnerability type, difficulty, constraints) using RAG over the knowledge base
+- **Storyteller**: creates the narrative wrapper — lore, scenario, and flavor text that make the challenge engaging without leaking the solution
+- **Developer**: writes the vulnerable source code. The code should contain *only* the intended vulnerability — no accidental bugs, no unintended side channels
 - **DevOps**: generates Dockerfile and deployment config
-- **Solver**: writes an exploit script and verifies the challenge is solvable
+- **Solver**: writes an exploit script that proves the challenge is solvable
+- **Validator**: end-of-pipeline quality gate. Builds the container, runs the exploit, confirms the flag is captured, and checks for unintended bugs (e.g., crashes, extra injection points, missing dependencies). On failure, errors are fed back to the Developer for a retry loop
 
 Each agent reads its persona from `.antigravity/skills/*.md` files. Generated challenges are saved to `output/<challenge_name>/`.
+
+### Future: LangGraph for the Validator Loop
+
+The initial pipeline is a linear chain of Pydantic-AI agents. Once the core agents are working, [LangGraph](https://github.com/langchain-ai/langgraph) will be integrated to manage the **Validator → Developer retry loop** as a proper state machine with conditional edges, retry budgets, and cycle detection. This gives us branching, error-feedback loops, and graph visualization that a simple linear chain can't express.
 
 ## Tech Stack
 
