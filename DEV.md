@@ -28,7 +28,7 @@ User Prompt → Pydantic-AI Agent Pipeline:
 - **Solver**: writes an exploit script that proves the challenge is solvable
 - **Validator**: end-of-pipeline quality gate. Builds the container, runs the exploit, confirms the flag is captured, and checks for unintended bugs (e.g., crashes, extra injection points, missing dependencies). On failure, errors are fed back to the Developer for a retry loop
 
-Each agent reads its persona from `.antigravity/skills/*.md` files. Generated challenges are saved to `output/<challenge_name>/`.
+Each agent reads its persona from `skills/*.md` files. Generated challenges are saved to `output/<challenge_name>/`.
 
 ### Future: LangGraph for the Validator Loop
 
@@ -57,7 +57,7 @@ This project sits at the intersection of three domains. AI assistants working in
 - Agents are stateful — the pipeline passes a state object between nodes so downstream agents (e.g., Developer) can reference upstream outputs (e.g., Architect's manifest). State must survive error/retry loops.
 - All LLM outputs are validated via Pydantic schemas with structured output. Malformed responses trigger retries, not crashes.
 - RAG retrieval feeds the Architect real challenge examples. Future direction: vector search via `pgvector` or ChromaDB, potentially GraphRAG with ego-graph extraction.
-- Agent personas (`.antigravity/skills/*.md`) use Chain-of-Thought prompting to force step-by-step reasoning rather than one-shot code generation.
+- Agent personas (`skills/*.md`) use Chain-of-Thought prompting to force step-by-step reasoning rather than one-shot code generation.
 
 ### Offensive Security
 - The system must encode vulnerability patterns (buffer overflows, UAF, SQLi, XSS, SSTI, JWT bypass) across C, Python, and JavaScript.
