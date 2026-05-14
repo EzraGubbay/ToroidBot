@@ -47,7 +47,7 @@ User Prompt
     └── README.md
 ```
 
-Each agent reads its persona from `.antigravity/skills/*.md` — no hardcoded system prompts.
+Each agent reads its persona from `skills/*.md` — no hardcoded system prompts.
 
 ---
 
@@ -135,13 +135,14 @@ ls output/
 
 ```
 ctf-poc/
-├── .antigravity/                # Agent Personas (editable markdown)
+├── skills/                      # Agent Personas (editable markdown)
 │   ├── rules.md                 # Global constraints
-│   └── skills/
-│       ├── rag_architect.md     # How to design challenges
-│       ├── ctf_developer.md     # How to write vulnerable code
-│       ├── devops_infra.md      # How to write Dockerfiles
-│       └── exploit_solver.md    # How to write exploits
+│   ├── rag_architect.md         # How to design challenges
+│   ├── storyteller.md           # How to write challenge lore/narrative
+│   ├── ctf_developer.md         # How to write vulnerable code
+│   ├── devops_infra.md          # How to write Dockerfiles
+│   ├── exploit_solver.md        # How to write exploits
+│   └── validator.md             # How to verify challenge quality
 │
 ├── .idx/dev.nix                 # Google IDX environment (optional)
 ├── pyproject.toml               # Dependencies
@@ -179,7 +180,7 @@ ctf-poc/
 
 | Decision | Why |
 |----------|-----|
-| **Agent personas in `.md` files** | Tweak prompts without touching code. Judges can read them. |
+| **Agent personas in `skills/*.md`** | Tweak prompts without touching code. Judges can read them. |
 | **LangGraph** | Gives us a real state machine with retries, branching, and visualization. |
 | **Gemini 2.5 Flash** | Fast, cheap, native JSON mode — ideal for structured multi-agent output. |
 | **Pydantic schemas** | Prevents "LLM returned garbage" crashes. Validates every response. |
