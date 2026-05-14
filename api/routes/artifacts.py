@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import PlainTextResponse, FileResponse
+from pathlib import Path
 
 from api.services.orchestrator import orchestrator_service
 
@@ -16,6 +17,13 @@ def get_artifact(run_id: str, path: str):
     arts = orchestrator_service.list_artifacts(run_id)
     for a in arts:
         if a.path == path:
-            # return a small placeholder text for now
+            # if the orchestrator stored an absolute output_dir, try to serve
+            r = orchestrator_service.runs.get(run_id)
+            out = r.get('output_dir') if r else None
+            if out:
+                p = Path(out) / path
+                if p.exists() and p.is_file():
+                    return FileResponse(p, media_type='application/octet-stream')
+            # fallback placeholder
             return PlainTextResponse(f"// artifact: {a.path}\n// produced by {a.agent}\n")
     raise HTTPException(status_code=404, detail='artifact not found')

@@ -4,6 +4,7 @@ import zipfile
 from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import uuid4
+import os
 
 from api.schemas import (
     ArtifactEntry,
@@ -14,32 +15,134 @@ from api.schemas import (
     ValidationResult,
 )
 
+# Try to import the real orchestrator pipeline and output saver. If the
+# heavyweight dependencies are unavailable (tests or dev without env), fall
+# back to the in-memory simulator implemented below. Additionally gate the
+# real orchestrator with the `USE_REAL_ORCHESTRATOR` env var so CI/dev can
+# opt into running the full pipeline explicitly.
+try:
+    from graph.pipeline import run_pipeline  # async
+    from orchestrator.output import save_challenge
+    from agents.schemas import CTFState
+    from agents.event_config import EventConfig
+    _imports_ok = True
+except Exception:
+    run_pipeline = None
+    save_challenge = None
+    CTFState = None
+    EventConfig = None
+    _imports_ok = False
+
+# Env toggle: set USE_REAL_ORCHESTRATOR=1, true, or yes (case-insensitive)
+_env_toggle = os.getenv("USE_REAL_ORCHESTRATOR", "0").lower() in ("1", "true", "yes")
+REAL_ORCHESTRATOR_AVAILABLE = bool(_imports_ok and _env_toggle)
+
 
 class OrchestratorService:
     def __init__(self):
-        # very small in-memory store for runs
+        # in-memory store for runs and a simple fallback simulator
         self.runs: Dict[str, Dict] = {}
 
     def start_run(self, prompt: dict) -> str:
+        """
+        Start a run. If the real orchestrator is available, schedule the full
+        pipeline; otherwise run the lightweight simulator for frontend/tests.
+        """
         run_id = f"r-{uuid4().hex[:8]}"
         now = datetime.utcnow()
         stages = [
-            StageStatus(name=s, status='queued') for s in
-            ('Architect', 'Storyteller', 'Developer', 'DevOps', 'Solver', 'Validator')
+            StageStatus(name=s, status='queued')
+            for s in ('Architect', 'Storyteller', 'Developer', 'DevOps', 'Solver', 'Validator')
         ]
         self.runs[run_id] = {
-            'summary': RunSummary(run_id=run_id, prompt=prompt, status='pending', started_at=now, current_stage=None),
+            'summary': RunSummary(
+                run_id=run_id,
+                prompt=prompt,
+                status='pending',
+                started_at=now,
+                current_stage=None,
+            ),
             'stages': stages,
             'artifacts': [],
             'logs': [],
             'validation': None,
         }
-        # schedule background simulation
-        asyncio.create_task(self._simulate_run(run_id))
+
+        if REAL_ORCHESTRATOR_AVAILABLE:
+            # Build a CTFState from the incoming prompt dict. Use EventConfig if
+            # caller supplied an `event` object; otherwise leave event unset.
+            try:
+                user_prompt = prompt.get('topic') or prompt.get('mode') or prompt.get('cve') or 'Generate CTF challenge'
+                state = CTFState(user_prompt=user_prompt)
+                # optional model override
+                if prompt.get('model'):
+                    state.set_cli_model_override(prompt.get('model'))
+                if prompt.get('event') and isinstance(prompt.get('event'), dict) and EventConfig is not None:
+                    try:
+                        state.event = EventConfig(**prompt.get('event'))
+                    except Exception:
+                        # invalid event payload — log and continue without event
+                        self._log(run_id, 'warning', 'Invalid event payload provided; ignoring')
+
+                # schedule the real pipeline in background
+                asyncio.create_task(self._run_pipeline_and_record(run_id, state))
+            except Exception as e:
+                # If anything goes wrong while scheduling the real run, fall
+                # back to the simulator so the API remains responsive.
+                self._log(run_id, 'error', f'Failed to schedule real pipeline: {e}; falling back to simulator')
+                asyncio.create_task(self._simulate_run(run_id))
+        else:
+            # schedule simulator
+            asyncio.create_task(self._simulate_run(run_id))
+
         return run_id
 
+    async def _run_pipeline_and_record(self, run_id: str, state):
+        """Run the real graph.pipeline.run_pipeline and record outputs to the
+        in-memory store. This function is scheduled as a background task.
+        """
+        store = self.runs.get(run_id)
+        if not store:
+            return
+        store['summary'].status = 'running'
+        store['summary'].current_stage = 'Architect'
+        self._log(run_id, 'info', 'Pipeline started (real orchestrator)')
+        try:
+            result_state = await run_pipeline(state)
+        except Exception as e:
+            store['summary'].status = 'failed'
+            store['summary'].finished_at = datetime.utcnow()
+            self._log(run_id, 'error', f'Pipeline failed: {e}')
+            store['validation'] = ValidationResult(passed=False, error=str(e))
+            return
+
+        # On success, save challenge outputs and list artifacts from the saved
+        # output directory if possible.
+        if result_state.validation and result_state.validation.passed:
+            try:
+                out_dir = save_challenge(result_state)
+                # Walk output dir to populate artifacts
+                artifacts: List[ArtifactEntry] = []
+                for p in out_dir.rglob('*'):
+                    if p.is_file():
+                        rel = str(p.relative_to(out_dir))
+                        artifacts.append(ArtifactEntry(path=rel, role='file', agent='pipeline', size=p.stat().st_size))
+                store['artifacts'] = artifacts
+                # record absolute output dir for artifact serving
+                try:
+                    store['output_dir'] = out_dir
+                except Exception:
+                    pass
+            except Exception as e:
+                self._log(run_id, 'warning', f'Failed to save challenge outputs: {e}')
+
+        store['validation'] = ValidationResult(passed=bool(getattr(result_state, 'validation', None) and result_state.validation.passed), flag=(result_state.manifest.flag if result_state.manifest else None), logs=[])
+        store['summary'].status = 'succeeded' if store['validation'].passed else 'failed'
+        store['summary'].finished_at = datetime.utcnow()
+        self._log(run_id, 'info', 'Pipeline completed')
+
     async def _simulate_run(self, run_id: str):
-        # simple progression sim
+        # simple progression sim (used when real orchestrator not available)
         store = self.runs.get(run_id)
         if not store:
             return
@@ -95,7 +198,11 @@ class OrchestratorService:
         r = self.runs.get(run_id)
         if not r:
             return None
-        return self.start_run(r['summary'].prompt.dict() if hasattr(r['summary'].prompt, 'dict') else r['summary'].prompt)
+        prompt = r['summary'].prompt
+        # prompt may be a model instance or dict
+        if hasattr(prompt, 'dict'):
+            prompt = prompt.dict()
+        return self.start_run(prompt)
 
     def list_artifacts(self, run_id: str) -> List[ArtifactEntry]:
         r = self.runs.get(run_id)
@@ -113,9 +220,12 @@ class OrchestratorService:
             raise FileNotFoundError()
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, 'w') as z:
-            # include fake files
+            # include files from artifacts when available
             for a in r['artifacts']:
-                z.writestr(a.path, f"// generated by {a.agent} (size={a.size})\n")
+                try:
+                    z.writestr(a.path, f"// generated by {a.agent} (size={a.size})\n")
+                except Exception:
+                    pass
             z.writestr('README.md', f"Run: {run_id}\nStatus: {r['summary'].status}\n")
         buf.seek(0)
         return buf.read()

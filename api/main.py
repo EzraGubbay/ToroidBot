@@ -9,6 +9,10 @@ from api.routes.artifacts import router as artifacts_router
 from api.routes.stream import router as stream_router
 from api.routes.skills import router as skills_router
 from api.routes.debug import router as debug_router
+from api.routes.kb import router as kb_router
+from api.routes.agents import router as agents_router
+from api.routes.settings import router as settings_router
+from api.routes.presets import router as presets_router
 
 
 app = FastAPI(
@@ -39,4 +43,8 @@ app.include_router(artifacts_router)
 app.include_router(stream_router)
 app.include_router(skills_router)
 app.include_router(debug_router)
+app.include_router(kb_router)
+app.include_router(agents_router)
+app.include_router(settings_router)
+app.include_router(presets_router)
 
