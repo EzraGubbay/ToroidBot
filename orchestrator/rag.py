@@ -1,176 +1,181 @@
-"""RAG retriever — searches the knowledge base for similar challenges.
+"""RAG retriever — pgvector similarity over the indexed challenge corpus.
 
-Returns rich context (code, solutions, file structures) so agents can
-derive implementation decisions from real examples rather than static definitions.
-
-Currently uses keyword matching against challenge metadata.
-Future: replace with vector search via pgvector or ChromaDB.
+Embeds the user query, retrieves top_k matches by cosine distance, and returns
+metadata + uid + languages for each. Full file content is NOT injected — this
+is parent-document retrieval: agents fetch source / writeups / files on demand
+via a separate uid-keyed tool (planned). Embedding metadata only keeps the
+similarity signal clean (NL queries vs. mixed-language code) and the per-row
+vectors small enough for cheap HNSW retrieval.
 """
 
 from __future__ import annotations
 
-import functools
-import json
+import atexit
+import logging
+import os
 from pathlib import Path
 
-RAG_DATA_DIR = Path(__file__).resolve().parent.parent / "dataset" / "formated_rag_data"
+import numpy as np
+import psycopg
+import psycopg_pool
+from dotenv import load_dotenv
+from google import genai
+from google.genai import errors as genai_errors
+from pgvector.psycopg import register_vector
+from psycopg.conninfo import make_conninfo
+from psycopg_pool import ConnectionPool
+
+from orchestrator.rag_config import EMBEDDING_DIM
+
+# Resolve .env relative to this file so the loader doesn't depend on CWD.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
+
+logger = logging.getLogger(__name__)
+
+# Lazy-init: importing this module must not open a DB connection or require
+# GEMINI_API_KEY. Callers / tests that don't exercise RAG should pay nothing.
+_client: genai.Client | None = None
+_pool: ConnectionPool | None = None
 
 
-@functools.lru_cache(maxsize=1)
-def _load_challenges() -> tuple[dict, ...]:
-    """Load all challenge JSON files from the RAG data directory.
-
-    Cached for the process lifetime — the dataset is read-only at runtime
-    and is queried by multiple agents per pipeline run.
-    """
-    challenges: list[dict] = []
-    if not RAG_DATA_DIR.exists():
-        return tuple(challenges)
-    for path in sorted(RAG_DATA_DIR.glob("*.json")):
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                challenges.extend(data)
-            else:
-                challenges.append(data)
-    return tuple(challenges)
+class EmbeddingError(RuntimeError):
+    """Raised when the embedding provider returns an unusable response."""
 
 
-def _score_challenge(challenge: dict, query_terms: set[str]) -> int:
-    """Score a challenge's relevance to the query terms."""
-    searchable = " ".join([
-        challenge.get("task_name", ""),
-        challenge.get("description", ""),
-        challenge.get("category", ""),
-        str(challenge.get("difficulty", "")),
-        # Also search file contents and solution text for deeper matching
-        " ".join(
-            f.get("language", "") + " " + f.get("content", "")[:500]
-            for f in challenge.get("files", [])
-        ),
-    ]).lower()
-
-    return sum(1 for term in query_terms if term in searchable)
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    return _client
 
 
-def _fenced(content: str, lang: str, max_chars: int) -> str:
-    """Render content in a fenced code block, neutralizing inner ``` so the fence stays balanced."""
-    safe = content[:max_chars].replace("```", "''' '''")
-    return f"```{lang}\n{safe}\n```"
-
-
-def _format_challenge_full(ch: dict) -> str:
-    """Format a single challenge with full implementation details."""
-    sections = []
-
-    # Header
-    sections.append(
-        f"### {ch.get('task_name', 'Unknown')} "
-        f"[{ch.get('category', '?')}, difficulty {ch.get('difficulty', '?')}]"
-    )
-
-    # Description
-    desc = ch.get("description", "")
-    if desc:
-        sections.append(f"**Description:** {desc}")
-
-    # Source files with content — the actual code patterns to learn from
-    files = ch.get("files", [])
-    for f in files:
-        role = f.get("role", "unknown")
-        path = f.get("path", "unknown")
-        lang = f.get("language", "")
-        content = f.get("content", "")
-        if content:
-            sections.append(f"**File: {path}** (role: {role})")
-            sections.append(_fenced(content, lang, max_chars=4000))
-
-    # Solution trajectory — step-by-step exploit approach
-    trajectory = ch.get("solution_trajectory", [])
-    if trajectory:
-        sections.append("**Solution approach:**")
-        for step in trajectory:
-            action = step.get("action", "")
-            command = step.get("command", "")
-            if action == "description" and command:
-                sections.append(f"- {command[:500]}")
-            elif action == "code_snippet" and command:
-                lang = step.get("language", "")
-                sections.append(_fenced(command, lang, max_chars=1000))
-
-    return "\n\n".join(sections)
-
-
-def _format_challenge_summary(ch: dict) -> str:
-    """Format a challenge as a brief summary with key implementation details."""
-    sections = []
-
-    sections.append(
-        f"### {ch.get('task_name', 'Unknown')} "
-        f"[{ch.get('category', '?')}, difficulty {ch.get('difficulty', '?')}]"
-    )
-
-    desc = ch.get("description", "")
-    if desc:
-        sections.append(f"**Description:** {desc[:300]}")
-
-    # List files and languages used — shows implementation patterns
-    files = ch.get("files", [])
-    if files:
-        file_list = ", ".join(
-            f"{f.get('path', '?')} ({f.get('language', '?')})" for f in files
+def _get_pool() -> ConnectionPool:
+    """Lazy, thread-safe connection pool with vector adapter pre-registered."""
+    global _pool
+    if _pool is None:
+        try:
+            password = os.environ["DB_PASSWORD"]
+        except KeyError as e:
+            raise RuntimeError(
+                "DB_PASSWORD is required for RAG retrieval. "
+                "Set it in .env or the environment."
+            ) from e
+        conninfo = make_conninfo(
+            dbname=os.getenv("DB_NAME", "vectordb"),
+            user=os.getenv("DB_USER", "admin"),
+            password=password,
+            host=os.getenv("DB_HOST", "localhost"),
+            port=os.getenv("DB_PORT", "5432"),
         )
-        sections.append(f"**Files:** {file_list}")
+        new_pool = ConnectionPool(
+            conninfo=conninfo,
+            min_size=1,
+            max_size=10,
+            configure=register_vector,
+            kwargs={"connect_timeout": 10},
+            timeout=15.0,
+            open=False,
+        )
+        try:
+            new_pool.open(wait=True, timeout=10)
+        except psycopg_pool.PoolTimeout:
+            # Leave _pool as None so the next call can retry cleanly instead of
+            # operating on a half-opened pool.
+            logger.exception("DB pool failed to open within 10s")
+            raise
+        _pool = new_pool
+    return _pool
 
-    # Brief solution hint
-    trajectory = ch.get("solution_trajectory", [])
-    for step in trajectory:
-        if step.get("action") == "description":
-            sections.append(f"**Solution hint:** {step.get('command', '')[:300]}")
-            break
 
-    return "\n".join(sections)
+@atexit.register
+def _close_pool() -> None:
+    """Close the pool before interpreter shutdown to avoid worker-thread
+    join errors from psycopg_pool's destructor."""
+    global _pool
+    if _pool is not None and not _pool.closed:
+        _pool.close()
+
+
+def _embed(text: str) -> np.ndarray:
+    """Embed text via Gemini. Raises EmbeddingError on empty / malformed responses."""
+    result = _get_client().models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=text,
+        config={"output_dimensionality": EMBEDDING_DIM},
+    )
+    if not result.embeddings:
+        raise EmbeddingError("Embedding provider returned no embeddings")
+    values = result.embeddings[0].values
+    if values is None or len(values) != EMBEDDING_DIM:
+        raise EmbeddingError(
+            f"Embedding provider returned wrong shape: "
+            f"got len={len(values) if values is not None else 'None'}, expected {EMBEDDING_DIM}"
+        )
+    return np.array(values)
+
+
+def _format_challenge_brief(
+    uid: str,
+    name: str,
+    description: str,
+    category: str,
+    difficulty: int,
+    languages: list[str],
+) -> str:
+    """Render a retrieved challenge as a metadata-only block.
+
+    The Architect will later use the uid to fetch full file content on demand.
+    """
+    langs_str = ", ".join(languages) if languages else "—"
+    return (
+        f"### {name} [{category}, difficulty {difficulty}]\n"
+        f"**uid:** `{uid}`\n"
+        f"**Languages:** {langs_str}\n"
+        f"**Description:** {description}"
+    )
 
 
 def retrieve_similar_challenges(query: str, top_k: int = 3) -> str:
-    """Find challenges relevant to the query and return rich context.
+    """Find challenges relevant to the query via pgvector similarity.
 
-    Returns full implementation details (source code, solution trajectories,
-    file structures) for the top match, and summaries for the rest. This gives
-    agents real examples to derive implementation decisions from.
+    Returns metadata (name, description, category, difficulty, languages) plus
+    uid for each match. Agents that need file contents can fetch them via a
+    future tool keyed on the returned uid.
 
     Args:
         query: The user's prompt or search terms.
         top_k: Number of results to return.
 
     Returns:
-        Formatted string with challenge details for inclusion in agent prompts.
+        Formatted string for inclusion in agent prompts.
     """
-    challenges = _load_challenges()
-    query_terms = set(query.lower().split())
+    if top_k <= 0:
+        return "No similar challenges found in the knowledge base."
+    try:
+        query_vector = _embed(query)
+        with _get_pool().connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT uid, name, description, category, difficulty, languages
+                    FROM challenges
+                    ORDER BY embedding <=> %s
+                    LIMIT %s
+                    """,
+                    (query_vector, top_k),
+                )
+                rows = cur.fetchall()
+    except (psycopg.Error, psycopg_pool.PoolTimeout, genai_errors.APIError, EmbeddingError):
+        # Detailed exception (which may include DSN bits or stack-trace-flavored
+        # text) only goes to logs — agents see a generic, prompt-safe message.
+        logger.exception("RAG retrieval failed")
+        return "RAG retrieval unavailable."
 
-    scored = []
-    for ch in challenges:
-        score = _score_challenge(ch, query_terms)
-        if score > 0:
-            scored.append((score, ch))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-
-    if not scored:
+    if not rows:
         return "No similar challenges found in the knowledge base."
 
-    results = []
-
-    # Top match gets full detail — code, solutions, everything
-    if scored:
-        results.append("## Most relevant example (study this for implementation patterns):\n")
-        results.append(_format_challenge_full(scored[0][1]))
-
-    # Remaining matches get summaries
-    if len(scored) > 1:
-        results.append("\n\n## Additional references:\n")
-        for _, ch in scored[1:top_k]:
-            results.append(_format_challenge_summary(ch))
-
-    return "\n\n".join(results)
+    parts = ["## Similar challenges from the knowledge base:\n"]
+    parts.extend(_format_challenge_brief(*row) for row in rows)
+    return "\n\n".join(parts)

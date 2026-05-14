@@ -27,3 +27,6 @@ venv/
 # Generated challenge artifacts (keep the directory marker only)
 output/*
 !output/.gitkeep
+
+# Local infra credentials
+infrastructure/.env
