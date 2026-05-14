@@ -13,36 +13,34 @@ from orchestrator.output import save_challenge
 
 load_dotenv()
 
-# Initialize FastMCP (handles the stdio/sse routing for you)
+# Initialize FastMCP (defaults to stdio routing)
 mcp = FastMCP("ToroidBot")
 
-# We can define a Pydantic model for our tool's arguments
-class GenerateChallengeArgs(BaseModel):
-    prompt: str = Field(
-        ..., 
-        description='The challenge concept, e.g. "Medium web SQLi challenge"'
-    )
-    config_path: Optional[str] = Field(
-        default=None, 
-        description="Optional absolute path to an event config (JSON/YAML)."
-    )
-    no_sandbox: bool = Field(
-        default=False, 
-        description="If true, skips the Docker Validator sandbox."
-    )
-
-# The @mcp.tool decorator automatically uses Pydantic to generate the schema
+# The @mcp.tool decorator automatically uses type hints to generate the schema
 @mcp.tool()
-async def generate_challenge(args: GenerateChallengeArgs) -> str:
-    """Generate a new CTF challenge based on a natural language prompt."""
+async def generate_challenge(
+    prompt: str,
+    config_path: Optional[str] = None,
+    no_sandbox: bool = False
+) -> str:
+    """Generate a new CTF challenge based on a natural language prompt.
     
+    Args:
+        prompt: The challenge concept, e.g. "Medium web SQLi challenge".
+        config_path: Optional absolute path to an event config (JSON/YAML).
+        no_sandbox: If true, skips the Docker Validator sandbox.
+    """
     event = None
-    if args.config_path:
-        event = load_event_config(Path(args.config_path))
+    if config_path:
+        event = load_event_config(Path(config_path))
     
-    state = CTFState(user_prompt=args.prompt, event=event)
-    state.max_retries = event.max_retries if event else 3
-    state.use_sandbox = False if args.no_sandbox else (event.use_sandbox if event else True)
+    state = CTFState(user_prompt=prompt, event=event)
+    
+    if event:
+        state.max_retries = event.max_retries
+        state.use_sandbox = False if no_sandbox else event.use_sandbox
+    else:
+        state.use_sandbox = not no_sandbox
 
     try:
         # Run the ToroidBot pipeline
@@ -60,8 +58,11 @@ async def generate_challenge(args: GenerateChallengeArgs) -> str:
             return f"Challenge generation failed validation.\nErrors:\n{errors}"
 
     except Exception as e:
+        import logging
+        logging.exception("Internal error during challenge generation")
         return f"An internal error occurred: {str(e)}"
 
 if __name__ == "__main__":
-    # FastMCP automatically starts the stdio server when run directly
+    # FastMCP automatically starts the stdio server when run directly.
+    # To use SSE, you would configure transport="sse".
     mcp.run()
