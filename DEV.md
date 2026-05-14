@@ -7,8 +7,9 @@ Shared project guidance for AI coding assistants. Referenced by CLAUDE.md, GEMIN
 CTF-POC is an AI-powered multi-agent system that generates complete, deployable Capture The Flag challenges. A single prompt produces source code, Dockerfile, solve script, and README — then optionally verifies solvability in a Docker sandbox.
 
 **Input modes:**
-1. Prompt-based: specify difficulty, category, and/or topic (e.g., "hard reverse engineering challenge requiring Z3")
-2. CVE-based: generate a challenge inspired by a real-world CVE (e.g., "challenge based on CVE-2024-1234")
+1. Prompt-only: `ctf-poc "<prompt>"` — same as before.
+2. Prompt + event config: `ctf-poc "<prompt>" --config examples/configs/megactf-2026.yaml`. The event config (YAML or JSON) defines event-wide constraints — flag regex, tone, theme, audience, organizer, forbidden techniques — plus per-agent model routing. CLI flags (`--model`, `--max-retries`, `--no-sandbox`) override config values. See [`examples/configs/`](examples/configs/) for samples and [`docs/superpowers/specs/2026-05-14-event-config-design.md`](docs/superpowers/specs/2026-05-14-event-config-design.md) for the full schema.
+3. CVE-based: prompt of the form `Build a challenge inspired by CVE-YYYY-NNNNN`. Reuses the same pipeline; the Architect retrieves CVE-adjacent context from the RAG corpus.
 
 ## Architecture
 

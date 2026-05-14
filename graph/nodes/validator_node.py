@@ -8,6 +8,7 @@ surface the sandbox can't see (information leaks, default credentials, etc.).
 from __future__ import annotations
 
 import logging
+import re
 
 from agents.factory import create_agent
 from agents.schemas import (
@@ -50,6 +51,22 @@ def _flag_in_source_check(state: CTFState) -> ValidationCheck:
     return ValidationCheck(check="flag_not_in_source", passed=True, detail="ok")
 
 
+def _flag_matches_regex_check(state: CTFState) -> ValidationCheck | None:
+    """Deterministic: if event.flag_regex is set, the generated flag must match it."""
+    if state.event is None:
+        return None
+    if state.manifest is None:
+        raise RuntimeError("Validator called before Architect")
+    flag = state.manifest.flag
+    regex = state.event.flag_regex
+    if re.fullmatch(regex, flag):
+        return ValidationCheck(check="flag_matches_regex", passed=True, detail="ok")
+    return ValidationCheck(
+        check="flag_matches_regex", passed=False,
+        detail=f"flag {flag!r} does not match event regex {regex}",
+    )
+
+
 def _decide_retry_target(checks: list[ValidationCheck]) -> RetryTarget:
     """If the only failures are in solver_run/flag_captured, blame the Solver; else the Developer."""
     failed = [c.check for c in checks if not c.passed]
@@ -66,7 +83,7 @@ async def _llm_review(state: CTFState) -> ValidationResult:
     assert state.manifest is not None and state.code is not None
     assert state.infra is not None and state.solver is not None
 
-    agent = create_agent("validator", ValidationResult, model=state.model)
+    agent = create_agent("validator", ValidationResult, model=state.model_for("validator"))
     prompt = (
         "Review this challenge for unintended bugs (default credentials, extra "
         "injection points, info leaks, missing auth) and qualitative issues. "
@@ -87,6 +104,9 @@ async def run(state: CTFState) -> CTFState:
     _require_pipeline_outputs(state)
 
     checks: list[ValidationCheck] = [_flag_in_source_check(state)]
+    regex_check = _flag_matches_regex_check(state)
+    if regex_check is not None:
+        checks.append(regex_check)
     flag_captured = False
     errors: list[str] = []
 

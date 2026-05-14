@@ -1,204 +1,301 @@
-# 🏴 CTF-POC: AI-Powered CTF Challenge Generator
+# CTF-POC: AI-Powered CTF Challenge Generator
 
-> **Hackathon Project** — An autonomous multi-agent system that designs, codes, deploys, and verifies Capture The Flag challenges using LangGraph + Google Gemini.
-
----
-
-## 🎯 What We're Building
-
-A pipeline where you type a single prompt like:
-```
-"Make a hard reverse engineering challenge that requires Z3 to solve"
-```
-…and the system automatically:
-1. **Designs** the challenge concept (vulnerability, lore, difficulty)
-2. **Writes** the vulnerable source code (C, Python, etc.)
-3. **Packages** it in Docker for deployment
-4. **Generates** an exploit script that proves it's solvable
-5. **Saves** everything to a ready-to-deploy folder
+A multi-agent system that designs, codes, packages, and verifies Capture-The-Flag challenges from a single natural-language prompt. Outputs a ready-to-deploy folder with source code, a Dockerfile, a solve script, and a player-facing README — verified by running the exploit against the challenge in a sandboxed Docker container.
 
 ---
 
-## 🏗️ Architecture
+## Input Modes
 
-```
-User Prompt
-    │
-    ▼
-┌──────────────────────────────────────────────────────┐
-│                   LangGraph Workflow                 │
-│                                                      │
-│  ┌───────────┐   ┌───────────┐   ┌────────┐   ┌───────────┐ │
-│  │ Architect │──▶│ Developer │──▶│ DevOps │──▶│  Solver   │ │
-│  │  (RAG)    │   │  (Code)   │   │(Docker)│   │ (Verify)  │ │
-│  └─────┬─────┘   └───────────┘   └────────┘   └───────────┘ │
-│        │                                                     │
-│   ┌────┴─────┐                                               │
-│   │Knowledge │                                               │
-│   │  Base    │                                               │
-│   └──────────┘                                               │
-└──────────────────────────────────────────────────────┘
-    │
-    ▼
-  output/<challenge_name>/
-    ├── source code
-    ├── Dockerfile
-    ├── solve.py
-    └── README.md
-```
+### Mode 1 — Topic-based (primary)
 
-Each agent reads its persona from `skills/*.md` — no hardcoded system prompts.
+> *"I want a `<difficulty>` `<category>` challenge related to `<topic / vulnerability / tool>`."*
 
----
-
-## 📋 Hackathon Task List
-
-### Phase 0: Environment Setup (15 min)
-- [ ] Clone the repo / open in IDX
-- [ ] Set up Python virtual environment
-- [ ] `pip install langgraph google-generativeai pydantic python-dotenv`
-- [ ] Add Gemini API key to `.env`
-- [ ] Verify basic Gemini connectivity with a test call
-
-### Phase 1: Get the Pipeline Running End-to-End (1.5 hr)
-> **Goal:** Type a prompt → get a folder with source code + Dockerfile + solve script.
-
-- [ ] **1.1** Verify `api_callers.py` loads skill files and calls Gemini correctly
-- [ ] **1.2** Test `architect_node.py` — does it return valid JSON matching `ChallengeManifest`?
-- [ ] **1.3** Test `developer_node.py` — does it return a dict of filename → code?
-- [ ] **1.4** Test `infra_node.py` — does it return a valid Dockerfile?
-- [ ] **1.5** Test `verify_node.py` — does it return a solve.py script?
-- [ ] **1.6** Run the full pipeline via `python -m orchestrator.main "simple web SQLi challenge"`
-- [ ] **1.7** Verify output files are saved correctly to `output/`
-
-### Phase 2: Knowledge Base & RAG (45 min)
-> **Goal:** Populate the knowledge base so the Architect produces better challenges.
-
-- [ ] **2.1** Import challenges from `ico-tasks` into `data/challenges.json`
-- [ ] **2.2** Import our hand-crafted examples (Z3 Magic, Vault Maze)
-- [ ] **2.3** Verify RAG retrieval: prompt for "reverse engineering" → Architect references rev challenges
-- [ ] **2.4** (Stretch) Replace keyword matching with ChromaDB vector search
-
-### Phase 3: Docker Sandbox Verification (1 hr)
-> **Goal:** Automatically build the challenge in Docker, run the solver against it, confirm the flag is captured.
-
-- [ ] **3.1** Implement `docker_runtime.py` — write files to temp dir, `docker build`, `docker run`
-- [ ] **3.2** Run `solve.py` against the container (web: HTTP to localhost, pwn: pwntools remote)
-- [ ] **3.3** Parse solver output — check if `CTF{` appears in stdout
-- [ ] **3.4** Tear down the container after verification
-- [ ] **3.5** If verification fails, feed the error back to the Developer node (self-reflection loop)
-
-### Phase 4: Challenge Quality (45 min)
-> **Goal:** Ensure generated challenges are actually good, not trivial or broken.
-
-- [ ] **4.1** Refine skill prompts (`rag_architect.md`, `ctf_developer.md`) based on output quality
-- [ ] **4.2** Add Pydantic validation in nodes — reject malformed LLM responses and retry
-- [ ] **4.3** Generate at least 3 different challenge categories successfully:
-  - [ ] Web (e.g., SQLi, SSTI, JWT bypass)
-  - [ ] Rev (e.g., Z3 constraints, angr maze)
-  - [ ] Crypto (e.g., RSA small-e, AES nonce reuse)
-- [ ] **4.4** Manually test at least 1 generated challenge end-to-end (build → solve → flag)
-
-### Phase 5: Demo Polish (30 min)
-> **Goal:** Make it look impressive for the judges.
-
-- [ ] **5.1** Clean up terminal output (progress bars, emoji, timing)
-- [ ] **5.2** Prepare 2-3 pre-cooked prompts that produce impressive output
-- [ ] **5.3** Write a one-slide summary of the architecture
-- [ ] **5.4** (Stretch) Add a simple Streamlit/Gradio web UI front-end
-- [ ] **5.5** (Stretch) Add a "batch mode" — generate 5 challenges at once from a category list
-
----
-
-## 🚀 Quick Start
+Any combination of the three slots is accepted; the Architect fills in the rest from the RAG corpus.
 
 ```bash
-# 1. Setup
-cd ctf-poc
-python -m venv venv
-source venv/bin/activate  # or .\venv\Scripts\Activate.ps1 on Windows
-pip install langgraph google-generativeai pydantic python-dotenv
+ctf-poc "Create a hard reverse engineering challenge that requires Z3 to solve"
+ctf-poc "Easy web challenge about JWT bypass"
+ctf-poc "Medium crypto challenge using AES nonce reuse"
+ctf-poc "Pwn challenge"                # category only — Architect picks difficulty + topic
+```
 
-# 2. Configure
-echo "GEMINI_API_KEY=your-key-here" > .env
+### Mode 2 — CVE-based
 
-# 3. Run
-python -m orchestrator.main "Create a medium web challenge about SQL injection"
+> *"I want a challenge inspired by `CVE-YYYY-NNNNN`."*
 
-# 4. Check output
+The Architect distils the CVE into a vulnerability primitive and adapts it into a self-contained challenge (not a reproduction of the real-world system).
+
+```bash
+ctf-poc "Build a challenge inspired by CVE-2024-3094"
+```
+
+Mode 1 is the priority surface; Mode 2 reuses the same pipeline with CVE-aware context retrieval.
+
+---
+
+## Event Config (optional)
+
+Either mode above can be paired with an **event config file** (YAML or JSON) that defines event-wide constraints — flag format, story tone/theme, audience, organizer, forbidden techniques — plus per-agent model routing. One config drives every challenge generated under it.
+
+```bash
+ctf-poc "Medium web challenge about SQL injection" --config examples/configs/megactf-2026.yaml
+```
+
+### Required fields
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Event name (e.g. `MegaCTF 2026`). Slugified for the output sub-directory. |
+| `flag_regex` | regex | Every generated flag must match. Mechanically enforced to require a minimum length — regexes that match strings shorter than 2 chars are rejected at load time. |
+
+### Optional fields
+
+| Field | Type | Default | Consumer |
+|---|---|---|---|
+| `theme` | string | `None` → Storyteller picks freely | Storyteller |
+| `tone` | enum: `formal` / `informal` / `humorous` / `dark` / `noir` | `informal` | Storyteller |
+| `organizer` | string | none | Storyteller (story flavor) |
+| `audience` | enum: `beginner` / `intermediate` / `expert` / `mixed` | `mixed` | Architect (difficulty calibration) |
+| `language` | ISO 639-1 string | `en` | Storyteller (player-facing text) |
+| `forbidden_categories` | list of categories | `[]` | Architect |
+| `forbidden_techniques` | list of strings | `[]` | Architect + Developer |
+| `default_model` | `<provider>:<model>` | `google-gla:gemini-2.5-flash` | All agents (fallback) |
+| `models` | per-agent map | empty | Architect / Storyteller / Developer / DevOps / Solver / Validator |
+| `max_retries` | int | `3` | Pipeline |
+| `use_sandbox` | bool | `true` | Validator |
+| `rag_top_k` | int | `3` | RAG retriever |
+
+### Per-agent model routing
+
+The `models:` block lets you route different agents to different providers — typically harder reasoning to stronger models, story/devops to cheaper ones:
+
+```yaml
+default_model: google-gla:gemini-2.5-flash
+models:
+  architect: openai:gpt-4.1
+  solver: anthropic:claude-sonnet-4-5
+```
+
+Precedence (highest first): **CLI `--model`** → `models.<agent>` → `default_model` → built-in default.
+
+### Override precedence
+
+CLI flags always beat the config:
+
+```bash
+ctf-poc "..." --config event.yaml --model openai:gpt-4.1   # CLI --model wins
+ctf-poc "..." --config event.yaml --no-sandbox             # forces use_sandbox=false
+ctf-poc "..." --config event.yaml --max-retries 10         # overrides config max_retries
+```
+
+### Sample configs
+
+- [`examples/configs/megactf-2026.yaml`](examples/configs/megactf-2026.yaml) — full-fat YAML with every field populated.
+- [`examples/configs/minimal.json`](examples/configs/minimal.json) — required fields only.
+
+For the full schema, see [`docs/superpowers/specs/2026-05-14-event-config-design.md`](docs/superpowers/specs/2026-05-14-event-config-design.md).
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U([User prompt]) --> A[Architect]
+    KB[("RAG knowledge base<br/>~35 real CTF challenges")] -. retrieval .-> A
+    KB -. retrieval .-> D
+    KB -. retrieval .-> S
+    EC[("Event config<br/>YAML/JSON (optional)")] -. constraints .-> A
+    EC -. constraints .-> ST
+    EC -. constraints .-> D
+    EC -. constraints .-> V
+    A --> ST[Storyteller]
+    ST --> D[Developer]
+    D --> DO[DevOps]
+    DO --> S[Solver]
+    S --> V{{Validator}}
+    V -- "retry_target = developer" --> D
+    V -- "retry_target = solver" --> S
+    V -- passed --> OUT[/"output/&lt;event-slug&gt;/&lt;challenge&gt;/"/]
+```
+
+**Validator** runs two layers:
+
+1. **Deterministic sandbox** (`DockerSandbox`) — `flag_not_in_source` → `flag_matches_regex` (when event set) → `docker_build` → `container_start` (on a private `--internal` network) → `solver_run` (in a **sibling container** on the same network, read-only fs, `--cap-drop ALL`) → `flag_captured`.
+2. **LLM review** — looks for unintended bugs the sandbox can't see (info leaks, default credentials, extra attack surface).
+
+If validation fails, the Validator names a **retry target**: `developer` reruns the full build (code + infra + solver), `solver` reruns only the exploit script. Retry budget is configurable.
+
+---
+
+## Quick Start
+
+```bash
+# 1. Install
+git clone <repo> && cd ToroidBot
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# 2. Configure (pick any supported provider)
+echo "GEMINI_API_KEY=your-key" > .env
+
+# 3a. Generate a one-off challenge
+ctf-poc "Medium web challenge about SQL injection"
+
+# 3b. Or generate under an event config (event-wide tone, theme, flag format, model routing)
+ctf-poc "Medium web challenge about SQL injection" --config examples/configs/megactf-2026.yaml
+
+# 3c. Skip the Docker sandbox for a faster LLM-only run
+ctf-poc "Easy crypto challenge with RSA" --no-sandbox
+
+# 4. Inspect the output
 ls output/
 ```
 
----
+Supported providers (anything Pydantic-AI supports via `<provider>:<model>`):
 
-## 📁 Project Structure
-
-```
-ctf-poc/
-├── skills/                      # Agent Personas (editable markdown)
-│   ├── rules.md                 # Global constraints
-│   ├── rag_architect.md         # How to design challenges
-│   ├── storyteller.md           # How to write challenge lore/narrative
-│   ├── ctf_developer.md         # How to write vulnerable code
-│   ├── devops_infra.md          # How to write Dockerfiles
-│   ├── exploit_solver.md        # How to write exploits
-│   └── validator.md             # How to verify challenge quality
-│
-├── .idx/dev.nix                 # Google IDX environment (optional)
-├── pyproject.toml               # Dependencies
-├── .env                         # API keys (not committed)
-│
-├── orchestrator/
-│   ├── main.py                  # Entry point
-│   └── manager.py               # Knowledge base I/O + file saving
-│
-├── graph/                       # LangGraph Engine
-│   ├── state.py                 # CTFState definition
-│   ├── workflow.py              # Graph: architect→developer→infra→verify→END
-│   └── nodes/
-│       ├── architect_node.py    # Concept design (RAG)
-│       ├── developer_node.py    # Source code generation
-│       ├── infra_node.py        # Dockerfile generation
-│       └── verify_node.py       # Exploit + verification
-│
-├── agents/
-│   ├── schemas.py               # Pydantic output schemas
-│   └── api_callers.py           # Skill loader + Gemini API wrapper
-│
-├── sandbox/
-│   └── docker_runtime.py        # Docker build/run/verify
-│
-├── data/
-│   └── challenges.json          # Knowledge base of past challenges
-│
-└── output/                      # Generated challenges saved here
+```bash
+--model google-gla:gemini-2.5-flash      # default
+--model openai:gpt-4.1
+--model anthropic:claude-sonnet-4-5
 ```
 
 ---
 
-## 🔑 Key Design Decisions
+## Output Layout
+
+Without an event config:
+
+```
+output/<challenge-name>/
+├── <source files…>          # Developer's code
+├── Dockerfile               # DevOps deployment config
+├── docker-compose.yml       # only if multi-service
+├── solve.py                 # Solver's exploit script
+├── README.md                # Storyteller's player-facing description + hints
+└── challenge_meta.json      # full pipeline state (manifest, story, code, infra, solver, validation)
+```
+
+With an event config, challenges nest under the slugified event name:
+
+```
+output/<event-slug>/<challenge-name>/
+├── <source files…>
+├── Dockerfile
+└── …
+```
+
+---
+
+## Project Structure
+
+```
+agents/
+├── schemas.py               # Pydantic models for every pipeline stage (CTFState, ChallengeManifest, …)
+├── event_config.py          # EventConfig schema + YAML/JSON loader + slugifier
+├── factory.py               # Builds Pydantic-AI agents from skill files + output schemas
+└── skill_loader.py          # Loads + caches skills/*.md
+
+graph/
+├── pipeline.py              # Linear chain with retry_target-aware partial reruns
+└── nodes/                   # One async node per agent — each composes its prompt from state + event
+
+orchestrator/
+├── main.py                  # CLI entry point (`ctf-poc`), --config flag, override precedence
+├── rag.py                   # Keyword RAG over dataset/formated_rag_data/
+└── output.py                # Writes challenge files; nests under event slug when set
+
+sandbox/
+└── docker_runtime.py        # DockerSandbox: build / start / sibling-container solver / teardown
+
+skills/                      # Agent personas (markdown, editable without touching code)
+├── rules.md                 # Global constraints (security, output format, handoff)
+├── rag_architect.md
+├── storyteller.md
+├── ctf_developer.md
+├── devops_infra.md
+├── exploit_solver.md
+└── validator.md
+
+examples/configs/            # Sample event configs (YAML + JSON)
+├── megactf-2026.yaml        # full-fat
+└── minimal.json             # required fields only
+
+dataset/formated_rag_data/   # ~35 hand-formatted CTF challenges used as RAG corpus
+docs/superpowers/            # Design specs and implementation plans
+tests/                       # 106 unit tests + a Docker-gated E2E sandbox test
+```
+
+---
+
+## Key Design Decisions
 
 | Decision | Why |
-|----------|-----|
-| **Agent personas in `skills/*.md`** | Tweak prompts without touching code. Judges can read them. |
-| **LangGraph** | Gives us a real state machine with retries, branching, and visualization. |
-| **Gemini 2.5 Flash** | Fast, cheap, native JSON mode — ideal for structured multi-agent output. |
-| **Pydantic schemas** | Prevents "LLM returned garbage" crashes. Validates every response. |
-| **Docker sandbox** | Proves the challenge actually works, not just that the code looks right. |
+|---|---|
+| **Pydantic-AI** (not LangGraph yet) | Structured output via Pydantic schemas, model-agnostic providers. LangGraph integration is planned for the retry loop. |
+| **Agent personas in `skills/*.md`** | Tweak prompts without touching code. The Architect's behaviour is a markdown file, not a string literal. |
+| **Event config as optional layer, not required** | One-off invocations stay terse (`ctf-poc "prompt"`). Multi-challenge events get reproducible, regex-enforced flag formats and consistent tone/theme via `--config event.yaml`. |
+| **Per-agent model routing via config** | `models.architect: openai:gpt-4.1`, `models.solver: anthropic:claude-sonnet-4-5`. CLI `--model` overrides everything. |
+| **Mechanical flag-regex enforcement** | Pydantic validator probes the regex with short strings at load time; configs that allow too-short flags fail before any LLM call. |
+| **RAG-driven, not template-driven** (for now) | Implementation choices (language, services, tools) are derived from real challenge examples, not a static enum. |
+| **Validator does both deterministic + LLM checks** | The sandbox proves the challenge *works*. The LLM catches qualitative issues the sandbox can't see. |
+| **Solver runs in a sibling container, not on the host** | LLM-generated exploit code never touches the developer's machine. Read-only fs, dropped caps, private internal network. |
+| **`manifest.name` constrained by Pydantic regex** | LLM output flows directly into `docker run --name …` and image tags — must be safe. |
+| **Model-agnostic via `<provider>:<model>`** | Gemini for speed, Claude/GPT for harder reasoning. No code change to switch. |
 
 ---
 
-## ⚡ Stretch Goals (if time permits)
-- **Self-reflection loop:** If the solver fails, feed the error back to the Developer automatically.
-- **Streamlit UI:** Web interface instead of CLI.
-- **Batch generation:** Generate an entire CTF competition (5-10 challenges) from a single config file.
-- **ChromaDB RAG:** Semantic search over the knowledge base instead of keyword matching.
-- **LangGraph visualization:** Export the graph as an image for the presentation.
+## Roadmap
 
-I want the readme to include the following things:
-First I want the input to the system to have a couple of possible modes
-1. I want a DIFFICULTY challenge for category X related to Y (Difficulty and/or Category and/or specific vulnerability/topic/tool)
-2. I want a challenge related to CVE xxxx-yyyy (Challenges inspired by real world vulnerabilities. 
-The first method It's more important than the second but add both of them.
+### Skills to add or improve
 
-Next I want to have clear to do for the it doesn't necessarily need to based on the current challenges but using challenges for the rag I also want to improve the skills we have and have a list of skills we should get like docker G uh setting up servers whatever, I want to know if we should also have templates Different challenges or if we should use the RAG for that. And then any other thing you think we should add
+The current 7 skills are intentionally generic. The clear gaps:
+
+| Skill | Purpose | Status |
+|---|---|---|
+| `cve_distiller` | Parse a CVE report, extract the vulnerability primitive, propose a self-contained adaptation. Powers Mode 2 properly. | needed |
+| `difficulty_calibrator` | Verifies generated challenge complexity matches the requested level by comparing against RAG examples at the same difficulty. | needed |
+| `writeup_writer` | Post-CTF teaching writeup (separate from the machine-runnable solve script). | nice-to-have |
+| `web_developer` / `pwn_developer` / `crypto_developer` / `rev_developer` | Split `ctf_developer.md` per category — language idioms, common vuln-embedding patterns, framework choices differ wildly. | should split once we hit quality issues |
+| `z3_solver` / `angr_solver` / `pwntools_solver` | Tool-specific solver expertise for hard challenges. | nice-to-have |
+| `devops_infra` | Strengthen the existing skill: split into base-image selection + hardening review, add per-category Dockerfile patterns (socat for pwn, gunicorn for web, etc.). | improve in place |
+| `validator` | Add category-specific "unintended bug" heuristics (e.g., web → check for missing CSRF tokens unless the challenge *is* CSRF). | improve in place |
+
+### Templates vs RAG
+
+**Recommendation: hybrid.** Use RAG for creative content (vulnerability embedding, exploit technique, story), templates for infrastructure boilerplate.
+
+| Layer | Approach | Why |
+|---|---|---|
+| Story, vulnerability embedding, exploit technique | **RAG** | Needs variety, learns from real examples, hard to enumerate |
+| Dockerfile base, server skeleton, dependency lists | **Templates** | Repetitive, regulated, doesn't benefit from creativity — and token-expensive to regenerate from scratch every run |
+| Solve-script scaffolding (connection setup, retry-with-backoff) | **Templates** | Same reasoning |
+
+Concretely: add `templates/<category>/<language>/Dockerfile.j2` and let DevOps pick the closest template, then adapt via RAG-guided modifications. Cuts token cost and increases consistency without losing the dynamic part.
+
+### Other planned work
+
+- **Vector RAG** — replace keyword matching in `orchestrator/rag.py` with pgvector or ChromaDB. Biggest single quality lever for queries like *"subtle deserialization bug"*.
+- **LangGraph integration** — replace the manual retry loop in `graph/pipeline.py` with a real state machine. Better retry budgets, branching, visualization. (See DEV.md.)
+- **AI Gateway** — unified provider routing via Pydantic AI Gateway so we can mix providers without per-key plumbing.
+- **Batch mode** — generate a 10-challenge CTF event from a single category-list config, paired with `--config`.
+- **Web UI** — Streamlit/Gradio frontend over the CLI.
+- **Per-category quality bar** — at least one fully verified generated challenge per category (web, pwn, rev, crypto, misc, forensics) committed under `examples/`.
+
+---
+
+## Development
+
+```bash
+# Run the unit suite (fast, no Docker needed)
+pytest tests/ -v --ignore tests/test_sandbox_e2e.py
+
+# Full suite including the Docker E2E test
+pytest tests/ -v   # E2E auto-skips if docker daemon isn't up
+
+# Lint
+ruff check .
+```
+
+See [`DEV.md`](DEV.md) for full architecture, RAG schema, and tech-stack rationale.
+See [`docs/superpowers/`](docs/superpowers/) for design specs and implementation plans.

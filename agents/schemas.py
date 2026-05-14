@@ -7,9 +7,16 @@ which is the full pipeline state passed between nodes.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+
+if TYPE_CHECKING:
+    from agents.event_config import EventConfig
+
+_VALID_AGENT_NAMES = {
+    "architect", "storyteller", "developer", "devops", "solver", "validator",
+}
 
 # Safe Docker image tag / container name component: lowercase alphanumerics and hyphens,
 # must start with an alphanumeric, no double hyphens at edges. Constrains LLM output so
@@ -131,12 +138,16 @@ class CTFState(BaseModel):
     Each agent populates its field and passes the state forward.
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     user_prompt: str
-    model: str = Field(default="google-gla:gemini-2.5-flash", description="Model string for agents")
+    model: str = Field(default="google-gla:gemini-2.5-flash", description="Built-in default model")
     use_sandbox: bool = Field(
         default=True,
         description="If True, the Validator runs the challenge in Docker. Disable for dry runs.",
     )
+    event: Optional["EventConfig"] = Field(default=None, description="Loaded event config")
+    _cli_model_override: Optional[str] = PrivateAttr(default=None)
 
     manifest: Optional[ChallengeManifest] = None
     story: Optional[ChallengeStory] = None
@@ -147,3 +158,33 @@ class CTFState(BaseModel):
 
     retry_count: int = 0
     max_retries: int = 3
+
+    def set_cli_model_override(self, model: str | None) -> None:
+        """Called by the CLI when --model is explicitly passed. Highest precedence."""
+        self._cli_model_override = model
+
+    @property
+    def has_cli_model_override(self) -> bool:
+        """Whether a CLI --model override is active."""
+        return self._cli_model_override is not None
+
+    def model_for(self, agent: str) -> str:
+        """Resolve which model to use for a given agent.
+
+        Precedence (highest first):
+            1. CLI --model override
+            2. event.models.<agent>
+            3. event.default_model
+            4. self.model (built-in)
+        """
+        if agent not in _VALID_AGENT_NAMES:
+            raise ValueError(f"Unknown agent name {agent!r}; expected one of {_VALID_AGENT_NAMES}")
+        if self._cli_model_override:
+            return self._cli_model_override
+        if self.event is not None:
+            per_agent = getattr(self.event.models, agent, None)
+            if per_agent:
+                return per_agent
+            if self.event.default_model:
+                return self.event.default_model
+        return self.model

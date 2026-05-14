@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agents.event_config import slugify_event_name
 from agents.schemas import CTFState
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "output"
@@ -30,7 +31,11 @@ def save_challenge(state: CTFState) -> Path:
     if missing:
         raise RuntimeError(f"save_challenge missing required pipeline outputs: {missing}")
 
-    challenge_dir = OUTPUT_DIR / state.manifest.name
+    if state.event is not None:
+        base = OUTPUT_DIR / slugify_event_name(state.event.name)
+    else:
+        base = OUTPUT_DIR
+    challenge_dir = base / state.manifest.name
     challenge_dir.mkdir(parents=True, exist_ok=True)
 
     # Write challenge source files

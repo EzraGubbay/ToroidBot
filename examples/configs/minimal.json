@@ -1,0 +1,4 @@
+{
+  "name": "Quickstart CTF",
+  "flag_regex": "^CTF\\{[a-zA-Z0-9_-]{8,}\\}$"
+}

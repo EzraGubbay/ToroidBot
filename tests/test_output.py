@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from agents.event_config import EventConfig
 from agents.schemas import CTFState
 from orchestrator import output
 
@@ -30,3 +31,17 @@ def test_save_challenge_raises_on_missing_outputs(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError) as exc:
         output.save_challenge(incomplete)
     assert "missing" in str(exc.value).lower()
+
+
+def test_save_challenge_uses_event_slug_when_event_set(tmp_path, monkeypatch, state):
+    monkeypatch.setattr(output, "OUTPUT_DIR", tmp_path)
+    state.event = EventConfig(name="MegaCTF 2026", flag_regex=r"^CTF\{[a-z]{8,}\}$")
+    out_dir = output.save_challenge(state)
+    assert out_dir == tmp_path / "megactf-2026" / "sample-web-1"
+    assert (out_dir / "Dockerfile").exists()
+
+
+def test_save_challenge_no_event_keeps_flat_layout(tmp_path, monkeypatch, state):
+    monkeypatch.setattr(output, "OUTPUT_DIR", tmp_path)
+    out_dir = output.save_challenge(state)
+    assert out_dir == tmp_path / "sample-web-1"

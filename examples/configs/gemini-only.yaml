@@ -1,0 +1,20 @@
+name: Gemini E2E Smoke
+flag_regex: ^CTF\{[a-zA-Z0-9_-]{8,}\}$
+theme: classic web exploitation
+tone: informal
+organizer: ToroidBot
+audience: beginner
+language: en
+forbidden_techniques:
+  - race conditions
+default_model: google-gla:gemini-2.5-flash
+models:
+  architect: google-gla:gemini-2.5-flash
+  developer: google-gla:gemini-2.5-flash
+  devops: google-gla:gemini-2.5-flash
+  solver: google-gla:gemini-2.5-flash
+  storyteller: google-gla:gemini-2.5-flash
+  validator: google-gla:gemini-2.5-flash
+max_retries: 1
+use_sandbox: false
+rag_top_k: 3

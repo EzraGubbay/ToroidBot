@@ -1,0 +1,18 @@
+name: MegaCTF 2026
+flag_regex: ^MEGACTF\{[a-zA-Z0-9_-]{8,}\}$
+theme: corporate espionage in 2099
+tone: noir
+organizer: Aperture Sec Labs
+audience: intermediate
+language: en
+forbidden_categories: []
+forbidden_techniques:
+  - time-based oracles
+  - race conditions
+default_model: google-gla:gemini-2.5-flash
+models:
+  architect: openai:gpt-4.1
+  solver: anthropic:claude-sonnet-4-5
+max_retries: 3
+use_sandbox: true
+rag_top_k: 3

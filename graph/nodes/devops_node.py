@@ -13,7 +13,7 @@ async def run(state: CTFState) -> CTFState:
     if state.code is None:
         raise RuntimeError("Developer must run before DevOps")
 
-    agent = create_agent("devops_infra", ChallengeInfra, model=state.model)
+    agent = create_agent("devops_infra", ChallengeInfra, model=state.model_for("devops"))
 
     prompt = (
         f"Challenge manifest:\n{state.manifest.model_dump_json(indent=2)}\n\n"
