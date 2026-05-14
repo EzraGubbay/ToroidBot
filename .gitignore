@@ -1,3 +1,27 @@
 dataset/cyber-zero
 dataset/ico-tasks
 dataset/build_rag.py
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets — only the example template is tracked
+.env
+.env.local
+
+# Generated challenge artifacts (keep the directory marker only)
+output/*
+!output/.gitkeep
