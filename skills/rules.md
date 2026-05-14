@@ -3,7 +3,8 @@
 These constraints apply to every agent in the pipeline.
 
 ## Output Format
-- Always return structured JSON matching the Pydantic schema for your role.
+- Your output is automatically validated against a Pydantic model. The JSON schema for your expected output is provided by the framework — follow it exactly.
+- Every field in the schema must be populated. Do not omit optional fields without reason.
 - If you cannot produce valid output, return a JSON error object with `{"error": "description"}` — never return free-form text.
 
 ## Security
