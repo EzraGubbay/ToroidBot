@@ -67,6 +67,7 @@ class OrchestratorService:
             'artifacts': [],
             'logs': [],
             'validation': None,
+            'task': None,
         }
 
         if REAL_ORCHESTRATOR_AVAILABLE:
@@ -86,31 +87,38 @@ class OrchestratorService:
                         self._log(run_id, 'warning', 'Invalid event payload provided; ignoring')
 
                 # schedule the real pipeline in background
-                self._schedule_background(self._run_pipeline_and_record(run_id, state))
+                task = self._schedule_background(self._run_pipeline_and_record(run_id, state))
+                self.runs[run_id]['task'] = task
             except Exception as e:
                 # If anything goes wrong while scheduling the real run, fall
                 # back to the simulator so the API remains responsive.
                 self._log(run_id, 'error', f'Failed to schedule real pipeline: {e}; falling back to simulator')
-                self._schedule_background(self._simulate_run(run_id))
+                task = self._schedule_background(self._simulate_run(run_id), prefer_thread=True)
+                self.runs[run_id]['task'] = task
         else:
             # schedule simulator
-            self._schedule_background(self._simulate_run(run_id))
+            task = self._schedule_background(self._simulate_run(run_id), prefer_thread=True)
+            self.runs[run_id]['task'] = task
 
         return run_id
 
-    def _schedule_background(self, coro):
+    def _schedule_background(self, coro, prefer_thread: bool = False):
         """Schedule a coroutine on the running loop when possible.
 
         If called from a synchronous context without a running loop, fall back
         to a dedicated daemon thread so tests/direct usage don't crash.
         """
+        if prefer_thread:
+            thread = threading.Thread(target=lambda: asyncio.run(coro), daemon=True)
+            thread.start()
+            return None
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             thread = threading.Thread(target=lambda: asyncio.run(coro), daemon=True)
             thread.start()
-            return
-        loop.create_task(coro)
+            return None
+        return loop.create_task(coro)
 
     async def _run_pipeline_and_record(self, run_id: str, state):
         """Run the real graph.pipeline.run_pipeline and record outputs to the
@@ -124,6 +132,8 @@ class OrchestratorService:
         self._log(run_id, 'info', 'Pipeline started (real orchestrator)')
         try:
             result_state = await run_pipeline(state)
+            if store['summary'].status == 'cancelled':
+                return
         except Exception as e:
             store['summary'].status = 'failed'
             store['summary'].finished_at = datetime.now(timezone.utc)
@@ -152,7 +162,8 @@ class OrchestratorService:
                 self._log(run_id, 'warning', f'Failed to save challenge outputs: {e}')
 
         store['validation'] = ValidationResult(passed=bool(getattr(result_state, 'validation', None) and result_state.validation.passed), flag=(result_state.manifest.flag if result_state.manifest else None), logs=[])
-        store['summary'].status = 'succeeded' if store['validation'].passed else 'failed'
+        if store['summary'].status != 'cancelled':
+            store['summary'].status = 'succeeded' if store['validation'].passed else 'failed'
         store['summary'].finished_at = datetime.now(timezone.utc)
         self._log(run_id, 'info', 'Pipeline completed')
 
@@ -163,10 +174,14 @@ class OrchestratorService:
             return
         store['summary'].status = 'running'
         for stage in store['stages']:
+            if store['summary'].status == 'cancelled':
+                return
             stage.status = 'running'
             store['summary'].current_stage = stage.name
             self._log(run_id, 'info', f"{stage.name} started")
             await asyncio.sleep(0.5)
+            if store['summary'].status == 'cancelled':
+                return
             # create fake artifact for developer
             if stage.name == 'Developer':
                 a = ArtifactEntry(path='source/main.c', role='source', agent='Developer', size=1234)
@@ -175,9 +190,12 @@ class OrchestratorService:
             stage.status = 'passed'
             stage.finished_at = datetime.now(timezone.utc)
             await asyncio.sleep(0.1)
+            if store['summary'].status == 'cancelled':
+                return
         # validation
         store['validation'] = ValidationResult(passed=True, flag='CTF{simulated_flag}', logs=[])
-        store['summary'].status = 'succeeded'
+        if store['summary'].status != 'cancelled':
+            store['summary'].status = 'succeeded'
         store['summary'].finished_at = datetime.now(timezone.utc)
         self._log(run_id, 'info', 'Run completed')
 
@@ -205,6 +223,9 @@ class OrchestratorService:
         if not r:
             return False
         r['summary'].status = 'cancelled'
+        task = r.get('task')
+        if task is not None and hasattr(task, 'cancel') and not task.done():
+            task.cancel()
         self._log(run_id, 'info', 'Cancelled by user')
         return True
 

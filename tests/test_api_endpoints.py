@@ -9,6 +9,18 @@ from api.main import app
 client = TestClient(app)
 
 
+def wait_for_run_status(run_id: str, expected_status: str, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        r = client.get(f"/runs/{run_id}")
+        assert r.status_code == 200
+        detail = r.json()
+        if detail["summary"]["status"] == expected_status:
+            return detail
+        time.sleep(0.1)
+    raise AssertionError(f"run {run_id} did not reach status {expected_status!r} within {timeout}s")
+
+
 def test_generate_and_run_lifecycle():
     # start a run
     body = {
@@ -30,13 +42,8 @@ def test_generate_and_run_lifecycle():
     runs = r.json()
     assert any(item["run_id"] == run_id for item in runs)
 
-    # wait a short while for the background simulation to progress
-    time.sleep(1.0)
-
-    # get run detail
-    r = client.get(f"/runs/{run_id}")
-    assert r.status_code == 200
-    detail = r.json()
+    # wait for the background simulation to finish instead of sleeping blindly
+    detail = wait_for_run_status(run_id, "succeeded")
     assert detail["summary"]["run_id"] == run_id
 
     # artifacts endpoint should list artifacts (developer stage creates one)
@@ -106,3 +113,19 @@ def test_agent_execute_allowlist_rejects_unknown_agent(monkeypatch):
         json={"user_prompt": "test"},
     )
     assert r.status_code == 404
+
+
+def test_cancel_run_stays_cancelled(monkeypatch):
+    monkeypatch.setenv("TOROIDBOT_ADMIN_KEY", "test-admin-key")
+    r = client.post(
+        "/generate",
+        json={"mode": "intent", "difficulty": "easy", "category": "web", "topic": "xss"},
+    )
+    assert r.status_code == 202
+    run_id = r.json()["run_id"]
+
+    r = client.post(f"/runs/{run_id}/cancel", headers={"X-API-Key": "test-admin-key"})
+    assert r.status_code == 200
+
+    detail = wait_for_run_status(run_id, "cancelled")
+    assert detail["summary"]["status"] == "cancelled"

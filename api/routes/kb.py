@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from uuid import uuid4
 
 from api.schemas import KBImportResponse
 from api.auth import admin_required
@@ -13,7 +13,7 @@ _KB: dict[str, dict] = {}
 @router.post('/kb/import', response_model=KBImportResponse)
 def import_kb(item: dict, _=Depends(admin_required)):
     # Accepts JSON {"path": "/some/path"} or {"url": "..."}
-    _id = f"kb-{len(_KB)+1}"
+    _id = f"kb-{uuid4().hex[:8]}"
     # For now just echo back a fake count
     count = 1
     _KB[_id] = {"meta": item, "count": count}
