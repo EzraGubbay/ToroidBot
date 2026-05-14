@@ -2,7 +2,7 @@
   "task_name": "r0bynotes",
   "description": "Rails is secure by default so it's perfect for my amazing notes app: [INSERT CHALLENGE URL HERE]",
   "category": "web",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "flag{not_the_flag}",
   "challenge_base_path": "../pbctf-2020-challs/web/r0bynotes",
   "source_files": [

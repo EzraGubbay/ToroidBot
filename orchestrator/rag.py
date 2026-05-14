@@ -1,9 +1,9 @@
 """RAG retriever — pgvector similarity over the indexed challenge corpus.
 
 Embeds the user query, retrieves top_k matches by cosine distance, and returns
-metadata + uid + languages for each. Full file content is NOT injected — this
+metadata + id + languages for each. Full file content is NOT injected — this
 is parent-document retrieval: agents fetch source / writeups / files on demand
-via a separate uid-keyed tool (planned). Embedding metadata only keeps the
+via a separate id-keyed tool (planned). Embedding metadata only keeps the
 similarity signal clean (NL queries vs. mixed-language code) and the per-row
 vectors small enough for cheap HNSW retrieval.
 """
@@ -117,7 +117,7 @@ def _embed(text: str) -> np.ndarray:
 
 
 def _format_challenge_brief(
-    uid: str,
+    challenge_id: str,
     name: str,
     description: str,
     category: str,
@@ -126,12 +126,12 @@ def _format_challenge_brief(
 ) -> str:
     """Render a retrieved challenge as a metadata-only block.
 
-    The Architect will later use the uid to fetch full file content on demand.
+    The Architect will later use the id to fetch full file content on demand.
     """
     langs_str = ", ".join(languages) if languages else "—"
     return (
         f"### {name} [{category}, difficulty {difficulty}]\n"
-        f"**uid:** `{uid}`\n"
+        f"**id:** `{challenge_id}`\n"
         f"**Languages:** {langs_str}\n"
         f"**Description:** {description}"
     )
@@ -141,8 +141,8 @@ def retrieve_similar_challenges(query: str, top_k: int = 3) -> str:
     """Find challenges relevant to the query via pgvector similarity.
 
     Returns metadata (name, description, category, difficulty, languages) plus
-    uid for each match. Agents that need file contents can fetch them via a
-    future tool keyed on the returned uid.
+    id for each match. Agents that need file contents can fetch them via a
+    future tool keyed on the returned id.
 
     Args:
         query: The user's prompt or search terms.
@@ -159,7 +159,7 @@ def retrieve_similar_challenges(query: str, top_k: int = 3) -> str:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT uid, name, description, category, difficulty, languages
+                    SELECT id, name, description, category, difficulty, languages
                     FROM challenges
                     ORDER BY embedding <=> %s
                     LIMIT %s

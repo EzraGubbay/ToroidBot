@@ -1,0 +1,33 @@
+# Example event config that routes every agent through OpenRouter.
+#
+# Requires OPENROUTER_API_KEY in .env. The Gemini embedding model used by the
+# RAG indexer (orchestrator/rag.py) is NOT proxied via OpenRouter — it still
+# needs GEMINI_API_KEY. See README for the rationale.
+#
+# Model strings have the form openrouter:<provider>/<model>. Browse models at
+# https://openrouter.ai/models.
+
+name: OpenRouter Demo Event
+flag_regex: ^OR\{[a-zA-Z0-9_-]{8,}\}$
+theme: secure coding bootcamp
+tone: informal
+organizer: ToroidBot
+audience: beginner
+language: en
+forbidden_techniques:
+  - race conditions
+default_model: openrouter:anthropic/claude-sonnet-4-5
+models:
+  # Strongest model for the hardest reasoning step.
+  architect: openrouter:anthropic/claude-sonnet-4-5
+  # Latest OpenAI for code generation.
+  developer: openrouter:openai/gpt-4.1
+  # Cheaper models for the well-bounded tasks.
+  devops: openrouter:google/gemini-2.5-flash
+  storyteller: openrouter:google/gemini-2.5-flash
+  validator: openrouter:google/gemini-2.5-flash
+  # Solver wants strong code understanding to exploit the challenge.
+  solver: openrouter:anthropic/claude-sonnet-4-5
+max_retries: 2
+use_sandbox: true
+rag_top_k: 3

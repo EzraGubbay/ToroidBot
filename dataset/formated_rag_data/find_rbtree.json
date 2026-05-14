@@ -2,7 +2,7 @@
   "task_name": "Find rbtree",
   "description": "Find rbtree among hundreds of people.",
   "category": "misc",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/misc/find_rbtree",
   "source_files": [

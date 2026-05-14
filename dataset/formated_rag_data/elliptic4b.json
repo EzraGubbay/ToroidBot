@@ -2,7 +2,7 @@
   "task_name": "Elliptic4b",
   "description": "Just because it's an elliptic curve doesn't mean you should close it immediately!",
   "category": "crypto",
-  "difficulty": "3",
+  "difficulty": 3,
   "flag": "ctf4b{1et'5_b3c0m3_3xp3r7s_1n_3ll1p71c_curv35!}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/crypto/elliptic4b",
   "source_files": [

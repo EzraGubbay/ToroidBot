@@ -2,7 +2,7 @@
   "task_name": "Profile",
   "description": "Here's a little warmup challenge for you. Revisit my profile picture, I have something hidden right under your noses this entire time :P",
   "category": "misc",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/misc/profile",
   "source_files": [

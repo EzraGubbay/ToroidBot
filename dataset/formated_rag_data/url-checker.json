@@ -2,7 +2,7 @@
   "task_name": "url-checker",
   "description": "Can you create a valid URL?",
   "category": "misc",
-  "difficulty": "2",
+  "difficulty": 2,
   "flag": "ctf4b{574r75w17h_50m371m35_n07_53cur37}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/misc/url-checker",
   "source_files": [

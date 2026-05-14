@@ -2,7 +2,7 @@
   "task_name": "Chamber of Echos",
   "description": "It seems that our server is inadvertently sending out confidential information.\nIf you listen closely and communicate using the right protocol, you'll notice it's performing strange encrypted transmissions.\nFortunately, we have acquired the encryption method and key used.\nCollect the data, decrypt it, and arrange the pieces in the correct order to retrieve the flag.\n\n---\nEncryption Method: `AES-128-ECB`\n\nDecryption Key (HEX): `546869734973415365637265744b6579`",
   "category": "misc",
-  "difficulty": "3",
+  "difficulty": 3,
   "flag": "ctf4b{th1s_1s_c0v3rt_ch4nn3l_4tt4ck}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/misc/chamber-of-echos",
   "source_files": [

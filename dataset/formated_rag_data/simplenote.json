@@ -2,7 +2,7 @@
   "task_name": "simplenote",
   "description": "I needed a place to put my thoughts: [INSERT CHALLENGE URL HERE]",
   "category": "web",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "pbctf{pwn1n6_ap4ch3_i5_St1ll w3b r1gh7?}",
   "challenge_base_path": "../pbctf-2020-challs/web/simplenote",
   "source_files": [

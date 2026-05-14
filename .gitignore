@@ -30,3 +30,6 @@ output/*
 
 # Local infra credentials
 infrastructure/.env
+
+# uv lock file (not tracked per project convention)
+uv.lock

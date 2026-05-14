@@ -2,7 +2,7 @@
   "task_name": "Sploosh",
   "description": "I wanted to make my own URL scraper, but parsing HTML is hard, so I used some random open source scraping project instead. [INSERT CHALLENGE URL HERE]",
   "category": "web",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/web/sploosh",
   "source_files": [

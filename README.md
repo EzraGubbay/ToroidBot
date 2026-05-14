@@ -78,6 +78,19 @@ models:
 
 Precedence (highest first): **CLI `--model`** → `models.<agent>` → `default_model` → built-in default.
 
+### Supported providers
+
+Any pydantic-ai provider prefix works. Common choices:
+
+| Prefix | Required env | Notes |
+|---|---|---|
+| `google-gla:` | `GEMINI_API_KEY` | Free tier available. Also drives RAG embeddings. |
+| `openai:` | `OPENAI_API_KEY` | |
+| `anthropic:` | `ANTHROPIC_API_KEY` | |
+| `openrouter:<provider>/<model>` | `OPENROUTER_API_KEY` | One key, every model. OpenRouter dashboard surfaces our spend under app_title `ToroidBot` (set automatically). |
+
+**RAG embeddings stay on Gemini AI Studio** regardless of which provider drives the agents. OpenRouter does not proxy Gemini embeddings, and switching embedders mid-corpus would invalidate the indexed vectors. The `GEMINI_API_KEY` is therefore required if you use RAG retrieval, even when every agent is routed through OpenRouter.
+
 ### Override precedence
 
 CLI flags always beat the config:
@@ -90,7 +103,9 @@ ctf-poc "..." --config event.yaml --max-retries 10         # overrides config ma
 
 ### Sample configs
 
-- [`examples/configs/megactf-2026.yaml`](examples/configs/megactf-2026.yaml) — full-fat YAML with every field populated.
+- [`examples/configs/megactf-2026.yaml`](examples/configs/megactf-2026.yaml) — full-fat YAML with every field populated; mix of direct provider keys (`openai:`, `anthropic:`).
+- [`examples/configs/openrouter.yaml`](examples/configs/openrouter.yaml) — every agent routed through OpenRouter with one `OPENROUTER_API_KEY`.
+- [`examples/configs/gemini-only.yaml`](examples/configs/gemini-only.yaml) — every agent on `google-gla:gemini-2.5-flash`, sandbox off; for contributors who only have an AI Studio key.
 - [`examples/configs/minimal.json`](examples/configs/minimal.json) — required fields only.
 
 For the full schema, see [`docs/superpowers/specs/2026-05-14-event-config-design.md`](docs/superpowers/specs/2026-05-14-event-config-design.md).

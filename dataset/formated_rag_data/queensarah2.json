@@ -2,7 +2,7 @@
   "task_name": "Queensarah2",
   "description": "The secret mainframe for a distributed hacker group has been discovered. We have managed to exfiltrate some of the code that it runs, but we don't have a physical copy of their access badges. Can you still get the flag? Remote: `nc makethis.remote.plz 1338` Note: enter flag as flag{lower_case_flag_text}",
   "category": "crypto",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "flag{lower_case_flag_text}",
   "challenge_base_path": "../pbctf-2020-challs/crypto/queensarah2",
   "source_files": [

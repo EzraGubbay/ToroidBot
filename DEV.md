@@ -38,17 +38,24 @@ The initial pipeline is a linear chain of Pydantic-AI agents. Once the core agen
 ## Tech Stack
 
 - **Agent framework**: [Pydantic-AI](https://pydantic.dev/docs/ai/overview/) — Agent class, `@agent.tool` decorators, Pydantic output schemas
-- **Model-agnostic**: agents use Pydantic-AI's `<provider>:<model>` string format — the model is a config choice, not hardcoded. Supported providers include Google Gemini, OpenAI (Codex/GPT), Anthropic, and others
-- **Multi-provider routing**: [Pydantic AI Gateway](https://pydantic.dev/ai-gateway) for unified access across providers
+- **Agent framework**: [Pydantic-AI](https://pydantic.dev/docs/ai/overview/) — Agent class, `@agent.tool` decorators, Pydantic output schemas
+- **Model-agnostic**: agents use Pydantic-AI's `<provider>:<model>` string format — the model is a config choice, not hardcoded
+- **Multi-provider routing**: [OpenRouter](https://pydantic.dev/docs/ai/models/openrouter/) is the team's paid aggregation provider — one key, every model. Direct providers (Gemini AI Studio, OpenAI, Anthropic) remain supported per-agent.
 - **Validation**: Pydantic models for all LLM inputs/outputs
 - **Sandbox**: Docker for build/run/verify
-- **Config**: `.env` for API keys (provider-specific, e.g., `GEMINI_API_KEY`, `OPENAI_API_KEY`)
+- **Config**: `.env` for API keys (provider-specific, e.g., `GEMINI_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`)
 
 Model is selected via environment or CLI flag — never hardcoded in agent definitions. Examples:
 - `google-gla:gemini-2.5-flash`
 - `openai:codex-mini`
 - `openai:gpt-4.1`
 - `anthropic:claude-sonnet-4-5`
+- `openrouter:anthropic/claude-sonnet-4-5`
+- `openrouter:google/gemini-2.5-flash`
+
+When an `openrouter:` string is routed through `agents.factory.create_agent`, the constructor automatically attaches `app_title="ToroidBot"` to the OpenRouterProvider so the team's OpenRouter dashboard can attribute spend.
+
+**RAG embeddings stay on Gemini AI Studio.** `orchestrator/rag.py` and `indexing/indexer.py` use `google-genai` directly with `gemini-embedding-001` regardless of agent provider routing — OpenRouter does not proxy Gemini embeddings, and switching embedders mid-corpus would invalidate the indexed vectors.
 
 ## Domain Knowledge Requirements
 

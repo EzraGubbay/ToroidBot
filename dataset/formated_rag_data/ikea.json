@@ -2,7 +2,7 @@
   "task_name": "Ikea Name Generator",
   "description": "This how the challenge description will read for all challengers",
   "category": "web",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/web/ikea",
   "source_files": [
@@ -92,7 +92,7 @@
       "path": "challenge/src/get_name.php",
       "path_from_output": "../pbctf-2020-challs/web/ikea/challenge/src/get_name.php",
       "language": "unknown",
-      "content": "<?php\n\nheader(\"Content-Type: application/json\");\n$names = array(\n  \"BASSLEKATILL\u00d6T\",\n  \"\u00c5R\",\n  \"ELIPET\",\n  \"SOLM\",\n  \"ODANDHEL\",\n  \"STER\",\n  \"OXSK\",\n  \"NORABRATA\",\n  \"\u00c5SUN\",\n  \"FON\",\n  \"HEN\",\n  \"\u00d6RRSESTER\",\n  \"F\u00d6R\",\n  \"BETTJAN\u00c4R\",\n  \"HJ\u00c4RLIG\",\n  \"SIG\",\n  \"RAM\",\n  \"TRUM\",\n  \"VACKIS\",\n  \"M\u00d6RT\",\n  \"SORPO\u00c4NGEN\",\n  \"LIATS\",\n  \"KOSTEN\",\n  \"KOT\"\n);\n\n$new_name = $_POST['name'];\n$message = array(\n  \"text\" => $names[crc32($new_name) % count($names)]\n);\n\n\necho json_encode($message);\n?>"
+      "content": "<?php\n\nheader(\"Content-Type: application/json\");\n$names = array(\n  \"BASSLEKATILLÖT\",\n  \"ÅR\",\n  \"ELIPET\",\n  \"SOLM\",\n  \"ODANDHEL\",\n  \"STER\",\n  \"OXSK\",\n  \"NORABRATA\",\n  \"ÅSUN\",\n  \"FON\",\n  \"HEN\",\n  \"ÖRRSESTER\",\n  \"FÖR\",\n  \"BETTJANÄR\",\n  \"HJÄRLIG\",\n  \"SIG\",\n  \"RAM\",\n  \"TRUM\",\n  \"VACKIS\",\n  \"MÖRT\",\n  \"SORPOÄNGEN\",\n  \"LIATS\",\n  \"KOSTEN\",\n  \"KOT\"\n);\n\n$new_name = $_POST['name'];\n$message = array(\n  \"text\" => $names[crc32($new_name) % count($names)]\n);\n\n\necho json_encode($message);\n?>"
     },
     {
       "role": "challenge_source",
