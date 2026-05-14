@@ -1,7 +1,7 @@
+import logging
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
 
 # Import FastMCP
 from mcp.server.fastmcp import FastMCP
@@ -58,7 +58,6 @@ async def generate_challenge(
             return f"Challenge generation failed validation.\nErrors:\n{errors}"
 
     except Exception as e:
-        import logging
         logging.exception("Internal error during challenge generation")
         return f"An internal error occurred: {str(e)}"
 
