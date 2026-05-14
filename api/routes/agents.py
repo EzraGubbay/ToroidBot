@@ -1,19 +1,35 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Any
 
+from api.auth import admin_required
+
 router = APIRouter()
+
+_AGENT_MODULES = {
+    'architect': 'graph.nodes.architect_node',
+    'storyteller': 'graph.nodes.storyteller_node',
+    'developer': 'graph.nodes.developer_node',
+    'devops': 'graph.nodes.devops_node',
+    'solver': 'graph.nodes.solver_node',
+    'validator': 'graph.nodes.validator_node',
+}
 
 
 @router.post('/agents/{agent_name}/execute')
-async def execute_agent(agent_name: str, payload: dict[str, Any], _=Depends(lambda: True)):
+async def execute_agent(agent_name: str, payload: dict[str, Any], _=Depends(admin_required)):
     """Execute a single agent node for debugging.
 
-    Currently this is a thin passthrough that attempts to locate a node
-    function in `graph.nodes` by convention (e.g. `architect_node.run`). If
-    the runtime doesn't have the graph nodes available this returns 501.
+    The agent name is validated against an explicit allowlist so the endpoint
+    cannot import arbitrary modules.
     """
+    module_path = _AGENT_MODULES.get(agent_name)
+    if not module_path:
+        raise HTTPException(status_code=404, detail='agent not found')
+
     try:
-        module = __import__(f'graph.nodes.{agent_name}_node', fromlist=['run'])
+        from importlib import import_module
+
+        module = import_module(module_path)
         run_fn = getattr(module, 'run')
     except Exception:
         raise HTTPException(status_code=501, detail='agent execution not available in this environment')

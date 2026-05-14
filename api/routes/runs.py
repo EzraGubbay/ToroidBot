@@ -1,5 +1,4 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
 from typing import List
 
 from api.schemas import RunDetail, RunSummary, StageStatus, ArtifactEntry, LogEntry

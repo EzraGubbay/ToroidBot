@@ -21,9 +21,11 @@ def get_artifact(run_id: str, path: str):
             r = orchestrator_service.runs.get(run_id)
             out = r.get('output_dir') if r else None
             if out:
-                p = Path(out) / path
-                if p.exists() and p.is_file():
-                    return FileResponse(p, media_type='application/octet-stream')
+                base = Path(out).resolve()
+                p = (base / path).resolve()
+                if base in p.parents or p == base:
+                    if p.exists() and p.is_file():
+                        return FileResponse(p, media_type='application/octet-stream')
             # fallback placeholder
             return PlainTextResponse(f"// artifact: {a.path}\n// produced by {a.agent}\n")
     raise HTTPException(status_code=404, detail='artifact not found')

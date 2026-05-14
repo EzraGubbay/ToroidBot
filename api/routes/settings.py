@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends
 
+from api.auth import admin_required
+
 router = APIRouter()
 
 # Simple in-memory settings for frontend visibility
@@ -15,6 +17,6 @@ def get_settings():
 
 
 @router.put('/settings')
-def put_settings(body: dict, _=Depends(lambda: True)):
+def put_settings(body: dict, _=Depends(admin_required)):
     _SETTINGS.update(body)
     return _SETTINGS

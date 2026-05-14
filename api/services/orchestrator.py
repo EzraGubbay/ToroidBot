@@ -1,10 +1,11 @@
 import asyncio
 import io
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from uuid import uuid4
 import os
+import threading
 
 from api.schemas import (
     ArtifactEntry,
@@ -49,7 +50,7 @@ class OrchestratorService:
         pipeline; otherwise run the lightweight simulator for frontend/tests.
         """
         run_id = f"r-{uuid4().hex[:8]}"
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         stages = [
             StageStatus(name=s, status='queued')
             for s in ('Architect', 'Storyteller', 'Developer', 'DevOps', 'Solver', 'Validator')
@@ -85,17 +86,31 @@ class OrchestratorService:
                         self._log(run_id, 'warning', 'Invalid event payload provided; ignoring')
 
                 # schedule the real pipeline in background
-                asyncio.create_task(self._run_pipeline_and_record(run_id, state))
+                self._schedule_background(self._run_pipeline_and_record(run_id, state))
             except Exception as e:
                 # If anything goes wrong while scheduling the real run, fall
                 # back to the simulator so the API remains responsive.
                 self._log(run_id, 'error', f'Failed to schedule real pipeline: {e}; falling back to simulator')
-                asyncio.create_task(self._simulate_run(run_id))
+                self._schedule_background(self._simulate_run(run_id))
         else:
             # schedule simulator
-            asyncio.create_task(self._simulate_run(run_id))
+            self._schedule_background(self._simulate_run(run_id))
 
         return run_id
+
+    def _schedule_background(self, coro):
+        """Schedule a coroutine on the running loop when possible.
+
+        If called from a synchronous context without a running loop, fall back
+        to a dedicated daemon thread so tests/direct usage don't crash.
+        """
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            thread = threading.Thread(target=lambda: asyncio.run(coro), daemon=True)
+            thread.start()
+            return
+        loop.create_task(coro)
 
     async def _run_pipeline_and_record(self, run_id: str, state):
         """Run the real graph.pipeline.run_pipeline and record outputs to the
@@ -111,7 +126,7 @@ class OrchestratorService:
             result_state = await run_pipeline(state)
         except Exception as e:
             store['summary'].status = 'failed'
-            store['summary'].finished_at = datetime.utcnow()
+            store['summary'].finished_at = datetime.now(timezone.utc)
             self._log(run_id, 'error', f'Pipeline failed: {e}')
             store['validation'] = ValidationResult(passed=False, error=str(e))
             return
@@ -138,7 +153,7 @@ class OrchestratorService:
 
         store['validation'] = ValidationResult(passed=bool(getattr(result_state, 'validation', None) and result_state.validation.passed), flag=(result_state.manifest.flag if result_state.manifest else None), logs=[])
         store['summary'].status = 'succeeded' if store['validation'].passed else 'failed'
-        store['summary'].finished_at = datetime.utcnow()
+        store['summary'].finished_at = datetime.now(timezone.utc)
         self._log(run_id, 'info', 'Pipeline completed')
 
     async def _simulate_run(self, run_id: str):
@@ -158,16 +173,16 @@ class OrchestratorService:
                 store['artifacts'].append(a)
                 self._log(run_id, 'info', 'Developer wrote source/main.c')
             stage.status = 'passed'
-            stage.finished_at = datetime.utcnow()
+            stage.finished_at = datetime.now(timezone.utc)
             await asyncio.sleep(0.1)
         # validation
         store['validation'] = ValidationResult(passed=True, flag='CTF{simulated_flag}', logs=[])
         store['summary'].status = 'succeeded'
-        store['summary'].finished_at = datetime.utcnow()
+        store['summary'].finished_at = datetime.now(timezone.utc)
         self._log(run_id, 'info', 'Run completed')
 
     def _log(self, run_id: str, level: str, message: str):
-        entry = LogEntry(timestamp=datetime.utcnow(), level=level, message=message)
+        entry = LogEntry(timestamp=datetime.now(timezone.utc), level=level, message=message)
         self.runs[run_id]['logs'].append(entry)
 
     def get_run(self, run_id: str) -> Optional[RunDetail]:
@@ -200,8 +215,10 @@ class OrchestratorService:
             return None
         prompt = r['summary'].prompt
         # prompt may be a model instance or dict
-        if hasattr(prompt, 'dict'):
-            prompt = prompt.dict()
+        if hasattr(prompt, 'model_dump'):
+            prompt = prompt.model_dump()
+        elif not isinstance(prompt, dict):
+            prompt = dict(prompt)
         return self.start_run(prompt)
 
     def list_artifacts(self, run_id: str) -> List[ArtifactEntry]:

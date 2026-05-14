@@ -25,6 +25,16 @@ def list_kb():
     return [{"id": k, "count": v["count"]} for k, v in _KB.items()]
 
 
+@router.get('/kb/search')
+def search_kb(q: str):
+    # naive substring search over stored meta
+    results = []
+    for k, v in _KB.items():
+        if q.lower() in str(v['meta']).lower():
+            results.append({'id': k, 'meta': v['meta']})
+    return results
+
+
 @router.get('/kb/{kb_id}')
 def get_kb(kb_id: str):
     v = _KB.get(kb_id)
@@ -39,13 +49,3 @@ def delete_kb(kb_id: str, _=Depends(admin_required)):
         del _KB[kb_id]
         return {'ok': True}
     raise HTTPException(status_code=404, detail='kb not found')
-
-
-@router.get('/kb/search')
-def search_kb(q: str):
-    # naive substring search over stored meta
-    results = []
-    for k, v in _KB.items():
-        if q.lower() in str(v['meta']).lower():
-            results.append({'id': k, 'meta': v['meta']})
-    return results
