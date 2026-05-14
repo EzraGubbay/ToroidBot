@@ -39,6 +39,28 @@ Model is selected via environment or CLI flag — never hardcoded in agent defin
 - `openai:gpt-4.1`
 - `anthropic:claude-sonnet-4-5`
 
+## Domain Knowledge Requirements
+
+This project sits at the intersection of three domains. AI assistants working in this codebase should understand the context behind each layer:
+
+### AI & Orchestration
+- Agents are stateful — the pipeline passes a state object between nodes so downstream agents (e.g., Developer) can reference upstream outputs (e.g., Architect's manifest). State must survive error/retry loops.
+- All LLM outputs are validated via Pydantic schemas with structured output. Malformed responses trigger retries, not crashes.
+- RAG retrieval feeds the Architect real challenge examples. Future direction: vector search via `pgvector` or ChromaDB, potentially GraphRAG with ego-graph extraction.
+- Agent personas (`.antigravity/skills/*.md`) use Chain-of-Thought prompting to force step-by-step reasoning rather than one-shot code generation.
+
+### Offensive Security
+- The system must encode vulnerability patterns (buffer overflows, UAF, SQLi, XSS, SSTI, JWT bypass) across C, Python, and JavaScript.
+- The Solver agent automates exploitation using tools like `pwntools` (pwn/rev) and `requests` (web). Generated solve scripts must be runnable, not pseudocode.
+- Advanced challenges use constraint solvers (Z3) and symbolic execution (angr) — the RAG knowledge base includes examples of these.
+- CVE-based mode requires distilling a CVE report into a challenge concept the AI can implement as an isolated, safe-to-deploy scenario.
+
+### Infrastructure & Sandboxing
+- Generated challenges are packaged in Docker containers. The DevOps agent writes `Dockerfile` and optionally `docker-compose.yml` for multi-service setups (frontend + backend + database).
+- Sandbox verification builds the container, runs the solve script against it, and checks for `CTF{` in stdout. Containers are torn down after verification.
+- Security hardening matters — generated containers must not allow breakout. Rootless containers and namespace isolation are preferred.
+- Future scale path: Go-based queue workers, AWS SQS/ECS Fargate for batch generation.
+
 ## RAG Knowledge Base
 
 `dataset/formated_rag_data/` contains ~35 challenge JSON files with this schema:
