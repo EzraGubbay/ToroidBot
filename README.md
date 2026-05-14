@@ -299,3 +299,40 @@ ruff check .
 
 See [`DEV.md`](DEV.md) for full architecture, RAG schema, and tech-stack rationale.
 See [`docs/superpowers/`](docs/superpowers/) for design specs and implementation plans.
+
+## API & Developer Notes (2026-05-15)
+
+This repository now includes a development FastAPI server that exposes a compact REST/WebSocket surface for driving the multi-agent pipeline (MVP/dev use). Use this section to get started and to understand the `simulator vs real orchestrator` toggle.
+
+- **Dev server entrypoint**: `api/main.py` (FastAPI app). Run locally with:
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+- **Important env toggles**:
+  - `USE_REAL_ORCHESTRATOR` (default: false) — When truthy the service will attempt to call the repo's real orchestrator (`graph.pipeline.run_pipeline` + `orchestrator.output.save_challenge`). Only enable in a properly provisioned environment (provider keys, DB, Docker, and other dependencies).
+  - `TOROIDBOT_ADMIN_KEY` — Required for admin-only endpoints (settings, debug, some skill/preset writes). Requests must include header `X-API-Key: <value>`.
+
+- **Core endpoints (dev surface)** — See `api/routes/*` for implementations and `API_ENDPOINTS_PLAN.md` for the design. Key routes include:
+  - `POST /generate` — start a run (returns `run_id`).
+  - `GET /runs` & `GET /runs/{run_id}` — list and inspect runs.
+  - WebSocket `ws://.../ws/runs/{run_id}` — realtime streaming of pipeline stage events.
+  - SSE `GET /runs/{run_id}/events` — server-sent events fallback when WS is not used.
+  - `GET /runs/{run_id}/artifacts` and `GET /runs/{run_id}/artifacts/{path}` — list and download artifacts.
+  - KB management under `/kb` (import/list/search), skills under `/skills`, presets under `/presets`, and agent execution helper under `/agents/{agent_name}/execute`.
+
+- **Simulator vs Real orchestrator**:
+  - The default developer-friendly behaviour uses an in-memory simulator so unit tests and local development run quickly without external providers or heavy deps.
+  - When `USE_REAL_ORCHESTRATOR` is enabled and the runtime can import the orchestrator modules, the server will call into the real pipeline. This requires provider API keys (e.g., `GEMINI_API_KEY`) and any DB or vector-store services the orchestrator depends on.
+
+- **Tests**:
+  - Fast local tests that exercise the API surface without heavy external deps: `pytest tests/test_api_endpoints.py`.
+  - The full test suite includes integration/E2E tests that may require Docker, provider keys, or DB services; expect collection failures if those optional deps are not present.
+
+- **Dev notes / where to look**:
+  - Orchestrator facade used by the API: `api/services/orchestrator.py` (gates real pipeline usage behind `USE_REAL_ORCHESTRATOR`).
+  - Routes live in `api/routes/` and schemas in `api/schemas.py`.
+  - Admin auth helper: `api/auth.py`.
+
+If you change the API surface, routes, or environment variables, update this README (endpoints, required env vars, and test instructions) so other contributors and CI understand the change.

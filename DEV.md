@@ -105,3 +105,14 @@ echo "OPENAI_API_KEY=your-key" >> .env
 # Run the pipeline (once built)
 python -m orchestrator.main "Create a medium web challenge about SQL injection"
 ```
+
+## Documentation Checklist (developer rules)
+
+When making substantial changes (API surface, routes, environment variables, public behaviour, or deployment flow), update `README.md` and include a short note in the PR description. Minimal checklist:
+
+- **README.md**: update endpoints, required env vars, how to run the dev server, and any test/run caveats.
+- **DEV.md**: add any developer-only commands or steps that depend on new services (DB, vector store, provider keys).
+- **Tests**: add or update targeted unit tests for the changed surface. If changes require external services, document which tests need provisioning and how to run them locally.
+- **Changelog / PR description**: include a concise list of breaking/important changes so reviewers can validate documentation coverage.
+
+Follow this checklist before merging PRs that change behavior other developers will rely on.
