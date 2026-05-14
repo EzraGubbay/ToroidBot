@@ -8,8 +8,10 @@ from agents.schemas import ChallengeInfra, CTFState
 
 async def run(state: CTFState) -> CTFState:
     """Run the DevOps agent to produce ChallengeInfra."""
-    assert state.manifest is not None, "Architect must run before DevOps"
-    assert state.code is not None, "Developer must run before DevOps"
+    if state.manifest is None:
+        raise RuntimeError("Architect must run before DevOps")
+    if state.code is None:
+        raise RuntimeError("Developer must run before DevOps")
 
     agent = create_agent("devops_infra", ChallengeInfra, model=state.model)
 

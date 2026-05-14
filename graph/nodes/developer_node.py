@@ -9,8 +9,10 @@ from orchestrator.rag import retrieve_similar_challenges
 
 async def run(state: CTFState) -> CTFState:
     """Run the Developer agent to produce ChallengeCode."""
-    assert state.manifest is not None, "Architect must run before Developer"
-    assert state.story is not None, "Storyteller must run before Developer"
+    if state.manifest is None:
+        raise RuntimeError("Architect must run before Developer")
+    if state.story is None:
+        raise RuntimeError("Storyteller must run before Developer")
 
     rag_context = retrieve_similar_challenges(
         f"{state.manifest.category} {state.manifest.vulnerability} {state.manifest.language}"

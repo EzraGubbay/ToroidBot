@@ -30,7 +30,12 @@ def parse_args() -> argparse.Namespace:
         "--max-retries",
         type=int,
         default=3,
-        help="Max validation retry attempts (default: 3)",
+        help="Additional validation retry attempts after the first run (default: 3)",
+    )
+    parser.add_argument(
+        "--no-sandbox",
+        action="store_true",
+        help="Skip Docker build/run/solve in the Validator (LLM review only)",
     )
     return parser.parse_args()
 
@@ -43,6 +48,7 @@ async def async_main() -> None:
         user_prompt=args.prompt,
         model=args.model,
         max_retries=args.max_retries,
+        use_sandbox=not args.no_sandbox,
     )
 
     print(f"Generating challenge: {args.prompt}")

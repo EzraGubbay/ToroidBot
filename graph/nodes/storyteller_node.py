@@ -8,7 +8,8 @@ from agents.schemas import ChallengeStory, CTFState
 
 async def run(state: CTFState) -> CTFState:
     """Run the Storyteller agent to produce a ChallengeStory."""
-    assert state.manifest is not None, "Architect must run before Storyteller"
+    if state.manifest is None:
+        raise RuntimeError("Architect must run before Storyteller")
 
     agent = create_agent("storyteller", ChallengeStory, model=state.model)
 

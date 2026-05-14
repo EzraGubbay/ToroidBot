@@ -9,17 +9,23 @@ Future: replace with vector search via pgvector or ChromaDB.
 
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 
 RAG_DATA_DIR = Path(__file__).resolve().parent.parent / "dataset" / "formated_rag_data"
 
 
-def _load_challenges() -> list[dict]:
-    """Load all challenge JSON files from the RAG data directory."""
-    challenges = []
+@functools.lru_cache(maxsize=1)
+def _load_challenges() -> tuple[dict, ...]:
+    """Load all challenge JSON files from the RAG data directory.
+
+    Cached for the process lifetime — the dataset is read-only at runtime
+    and is queried by multiple agents per pipeline run.
+    """
+    challenges: list[dict] = []
     if not RAG_DATA_DIR.exists():
-        return challenges
+        return tuple(challenges)
     for path in sorted(RAG_DATA_DIR.glob("*.json")):
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -27,7 +33,7 @@ def _load_challenges() -> list[dict]:
                 challenges.extend(data)
             else:
                 challenges.append(data)
-    return challenges
+    return tuple(challenges)
 
 
 def _score_challenge(challenge: dict, query_terms: set[str]) -> int:
@@ -45,6 +51,12 @@ def _score_challenge(challenge: dict, query_terms: set[str]) -> int:
     ]).lower()
 
     return sum(1 for term in query_terms if term in searchable)
+
+
+def _fenced(content: str, lang: str, max_chars: int) -> str:
+    """Render content in a fenced code block, neutralizing inner ``` so the fence stays balanced."""
+    safe = content[:max_chars].replace("```", "''' '''")
+    return f"```{lang}\n{safe}\n```"
 
 
 def _format_challenge_full(ch: dict) -> str:
@@ -71,7 +83,7 @@ def _format_challenge_full(ch: dict) -> str:
         content = f.get("content", "")
         if content:
             sections.append(f"**File: {path}** (role: {role})")
-            sections.append(f"```{lang}\n{content}\n```")
+            sections.append(_fenced(content, lang, max_chars=4000))
 
     # Solution trajectory — step-by-step exploit approach
     trajectory = ch.get("solution_trajectory", [])
@@ -84,7 +96,7 @@ def _format_challenge_full(ch: dict) -> str:
                 sections.append(f"- {command[:500]}")
             elif action == "code_snippet" and command:
                 lang = step.get("language", "")
-                sections.append(f"```{lang}\n{command[:1000]}\n```")
+                sections.append(_fenced(command, lang, max_chars=1000))
 
     return "\n\n".join(sections)
 

@@ -9,9 +9,12 @@ from orchestrator.rag import retrieve_similar_challenges
 
 async def run(state: CTFState) -> CTFState:
     """Run the Solver agent to produce a ChallengeSolver."""
-    assert state.manifest is not None, "Architect must run before Solver"
-    assert state.code is not None, "Developer must run before Solver"
-    assert state.infra is not None, "DevOps must run before Solver"
+    if state.manifest is None:
+        raise RuntimeError("Architect must run before Solver")
+    if state.code is None:
+        raise RuntimeError("Developer must run before Solver")
+    if state.infra is None:
+        raise RuntimeError("DevOps must run before Solver")
 
     rag_context = retrieve_similar_challenges(
         f"{state.manifest.category} {state.manifest.vulnerability} exploit solve"

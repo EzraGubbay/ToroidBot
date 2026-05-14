@@ -1,10 +1,14 @@
 """Loads agent persona markdown files from the skills/ directory."""
 
+from __future__ import annotations
+
+import functools
 from pathlib import Path
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 
 
+@functools.lru_cache(maxsize=None)
 def load_skill(name: str) -> str:
     """Load a skill markdown file by name (without extension).
 

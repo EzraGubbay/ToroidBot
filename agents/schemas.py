@@ -11,6 +11,11 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+# Safe Docker image tag / container name component: lowercase alphanumerics and hyphens,
+# must start with an alphanumeric, no double hyphens at edges. Constrains LLM output so
+# `docker run --name <manifest.name>` and `docker build -t ctf-poc/<manifest.name>` are safe.
+CHALLENGE_NAME_PATTERN = r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$"
+
 
 class Category(str, Enum):
     WEB = "web"
@@ -21,14 +26,26 @@ class Category(str, Enum):
     FORENSICS = "forensics"
 
 
+class RetryTarget(str, Enum):
+    """Which agent the Validator wants re-run on failure."""
+
+    DEVELOPER = "developer"
+    SOLVER = "solver"
+
+
 class ChallengeManifest(BaseModel):
     """Output of the Architect agent."""
 
-    name: str = Field(description="Short, hyphenated challenge name")
+    name: str = Field(
+        pattern=CHALLENGE_NAME_PATTERN,
+        description="Short, hyphenated challenge name (lowercase alphanumerics + hyphens)",
+    )
     category: Category
     difficulty: int = Field(ge=1, le=5, description="1 = very easy, 5 = very hard")
     vulnerability: str = Field(description="Specific flaw to exploit")
-    description_hint: Optional[str] = Field(description="Technical summary for the Developer (not player-facing)")
+    description_hint: Optional[str] = Field(
+        default=None, description="Technical summary for the Developer (not player-facing)"
+    )
     language: str = Field(description="Primary language for challenge source")
     services: list[str] = Field(description="Services needed (e.g., 'web server', 'tcp socket', 'none')")
     tools_required: list[str] = Field(description="Tools a solver would need")
@@ -100,7 +117,11 @@ class ValidationResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
     retry_instructions: str = Field(
-        default="", description="Instructions for the Developer on what to fix"
+        default="", description="Instructions for the next agent on what to fix"
+    )
+    retry_target: RetryTarget = Field(
+        default=RetryTarget.DEVELOPER,
+        description="Which agent to re-run on failure (developer or solver)",
     )
 
 
@@ -112,6 +133,10 @@ class CTFState(BaseModel):
 
     user_prompt: str
     model: str = Field(default="google-gla:gemini-2.5-flash", description="Model string for agents")
+    use_sandbox: bool = Field(
+        default=True,
+        description="If True, the Validator runs the challenge in Docker. Disable for dry runs.",
+    )
 
     manifest: Optional[ChallengeManifest] = None
     story: Optional[ChallengeStory] = None

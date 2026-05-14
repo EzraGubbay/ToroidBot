@@ -19,10 +19,16 @@ def save_challenge(state: CTFState) -> Path:
     Returns:
         Path to the output directory.
     """
-    assert state.manifest is not None
-    assert state.code is not None
-    assert state.infra is not None
-    assert state.solver is not None
+    missing = [
+        name for name, value in (
+            ("manifest", state.manifest),
+            ("code", state.code),
+            ("infra", state.infra),
+            ("solver", state.solver),
+        ) if value is None
+    ]
+    if missing:
+        raise RuntimeError(f"save_challenge missing required pipeline outputs: {missing}")
 
     challenge_dir = OUTPUT_DIR / state.manifest.name
     challenge_dir.mkdir(parents=True, exist_ok=True)
