@@ -60,11 +60,14 @@ async def run(state: CTFState) -> CTFState:
             f"Model: {state.model_for('developer')}"
         )
 
-    # DevOps owns the Dockerfile — remove any Dockerfile the Developer included.
-    # Keeping it causes `flag_not_in_source` failures because the Developer often
-    # hardcodes the flag literal, while DevOps correctly uses ARG FLAG.
+    # Remove infrastructure files that the Developer must not own:
+    # - Dockerfile/compose: DevOps generates these; Developer's version often has a
+    #   hardcoded flag literal that trips `flag_not_in_source`.
+    # - flag.txt: should never be in code.files — the flag is injected at build time
+    #   via --build-arg FLAG=... into /flag.txt inside the image.
+    _devops_owned = {"dockerfile", "docker-compose.yml", "docker-compose.yaml", "flag.txt"}
     for key in list(code.files.keys()):
-        if key.lower() in ("dockerfile", "docker-compose.yml", "docker-compose.yaml"):
+        if key.lower() in _devops_owned:
             del code.files[key]
 
     state.code = code

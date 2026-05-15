@@ -17,7 +17,7 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 - Web (Python): `python:3.12-slim`
 - Web (Node): `node:22-slim`
 - Web (Java): `eclipse-temurin:21-jre`
-- Pwn/Rev (C/C++): `ubuntu:24.04` (players expect glibc debugging tools)
+- Pwn/Rev (C/C++): `FROM --platform=linux/amd64 ubuntu:24.04` — the `--platform` flag is **required** so x86 binaries compile and run correctly on ARM hosts (Apple Silicon). Without it, GCC produces ARM binaries that break x86 exploit scripts.
 - Crypto: `python:3.12-slim` or `sagemath/sagemath` for Sage challenges
 
 ### Security Hardening
@@ -42,7 +42,14 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 
 ### Networking
 - Web challenges: expose the HTTP port (typically 1337 or 8080).
-- Pwn challenges: use `socat TCP-LISTEN:<port>,reuseaddr,fork EXEC:./challenge` or xinetd.
+- Pwn challenges: use `socat` for simpler setup:
+  ```
+  CMD ["socat", "TCP-LISTEN:1337,reuseaddr,fork", "EXEC:/home/ctf/challenge,stderr"]
+  ```
+  Prefer `socat` over `xinetd` — xinetd requires a config file that is easy to forget. If you must use `xinetd`, write the config **inline** in the Dockerfile with `RUN` (never COPY from a file that the Developer might not have created):
+  ```
+  RUN printf '[...]' > /etc/xinetd.d/challenge
+  ```
 - Crypto challenges that are offline (no server): the Dockerfile should still work for the Validator to build and run the solve script against.
 
 ### Multi-Service (docker-compose)

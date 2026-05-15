@@ -102,6 +102,23 @@ class DockerSandbox:
         except (subprocess.TimeoutExpired, OSError):
             return False
 
+    def _platform_args(self) -> list[str]:
+        """Return ['--platform', 'linux/amd64'] if the Dockerfile FROM line requests it.
+
+        DevOps specifies `FROM --platform=linux/amd64 ubuntu:24.04` for pwn/rev
+        challenges that need x86 binaries. The sandbox must pass the same platform
+        flag to every docker command so all layers (build, run, solver) are consistent.
+        On ARM hosts (Apple Silicon) this triggers QEMU emulation transparently.
+        """
+        infra = self.state.infra
+        if infra is None:
+            return []
+        for line in infra.dockerfile.splitlines():
+            stripped = line.strip()
+            if stripped.upper().startswith("FROM") and "linux/amd64" in stripped.lower():
+                return ["--platform", "linux/amd64"]
+        return []
+
     def write_files(self) -> None:
         """Write challenge files and a corrected Dockerfile to the working directory.
 
@@ -200,7 +217,7 @@ class DockerSandbox:
         _require(self.state.manifest, "state.manifest")
         flag = self.state.manifest.flag  # type: ignore[union-attr]
         return subprocess.run(
-            ["docker", "build", "-t", self.image_tag, "--build-arg", f"FLAG={flag}", "."],
+            ["docker", "build", *self._platform_args(), "-t", self.image_tag, "--build-arg", f"FLAG={flag}", "."],
             cwd=self.work_dir,
             capture_output=True,
             text=True,
@@ -225,6 +242,7 @@ class DockerSandbox:
         _require(self.state.infra, "state.infra")
         cmd = [
             "docker", "run", "-d",
+            *self._platform_args(),
             "--name", self.container_name,
             "--network", self.network_name,
             "--cap-drop", "ALL",
@@ -329,7 +347,7 @@ class DockerSandbox:
         build = self.build()
         print(f"[sandbox] docker build exit={build.returncode}", file=sys.stderr, flush=True)
         if build.returncode != 0:
-            print(f"[sandbox] build stderr:\n{build.stderr[:1000]}", file=sys.stderr, flush=True)
+            print(f"[sandbox] build stderr:\n{build.stderr[:3000]}", file=sys.stderr, flush=True)
         checks.append(_check_from_proc("docker_build", build))
         if build.returncode != 0:
             return checks, False, build.stderr
