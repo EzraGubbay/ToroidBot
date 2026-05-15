@@ -29,6 +29,7 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 
 ### Build Correctness
 - Copy source files before installing dependencies (layer caching).
+- **Use `code.entry_point` verbatim for your CMD or ENTRYPOINT instruction** — do not assume `app.py` or any other filename. If `entry_point` is `"server.py"`, the CMD must reference `server.py`.
 - If the Developer specified compiler flags, use them exactly.
 - For challenges with `requirements.txt` or `package.json`, install dependencies in a separate layer.
 - If the challenge needs specific library versions (e.g., a particular glibc for pwn), pin them.

@@ -4,6 +4,19 @@ Lifecycle (build → start → solve → teardown) used by the Validator to chec
 that challenges actually work. The solve script is executed inside a sibling
 container on a private Docker network — never on the host — so LLM-generated
 exploit code cannot reach the developer's machine.
+
+## Schema-driven correctness
+
+Rather than trusting LLM agents to produce mutually consistent artifacts, the
+sandbox derives three critical values directly from Pydantic schema fields:
+
+  code.python_packages  → requirements.txt   (never inferred from imports)
+  infra.startup_command → Dockerfile CMD      (always overrides whatever DevOps wrote)
+  infra.exposed_ports   → readiness poll host (socket connect before running solver)
+
+This means inter-agent inconsistencies (wrong filename in CMD, missing
+requirements.txt, etc.) are corrected at sandbox time rather than surfacing as
+cryptic Docker build/runtime errors.
 """
 
 from __future__ import annotations
@@ -17,10 +30,9 @@ import tempfile
 import time
 from pathlib import Path
 
-log = logging.getLogger(__name__)
-
-
 from agents.schemas import CTFState, ValidationCheck
+
+log = logging.getLogger(__name__)
 
 # Defense-in-depth: ChallengeManifest.name already constrains LLM output via Pydantic
 # regex, but the sandbox re-validates before passing names into `docker` so a future
@@ -32,6 +44,7 @@ BUILD_TIMEOUT_S = 180
 START_TIMEOUT_S = 30
 SOLVE_TIMEOUT_S = 90
 TEARDOWN_TIMEOUT_S = 30
+STARTUP_GRACE_S = 3  # seconds to wait after container start before checking health
 
 
 def _require(value, label: str) -> None:
@@ -90,23 +103,87 @@ class DockerSandbox:
             return False
 
     def write_files(self) -> None:
-        """Write challenge files and Dockerfile to the working directory."""
+        """Write challenge files and a corrected Dockerfile to the working directory.
+
+        Three schema-derived fixups are applied unconditionally:
+        1. requirements.txt is generated from code.python_packages (not inferred).
+        2. The Dockerfile CMD is replaced with infra.startup_command verbatim.
+        3. Any COPY targets that are still missing after (1) are logged as warnings.
+        """
         _require(self.state.code, "state.code")
         _require(self.state.infra, "state.infra")
+        code = self.state.code  # type: ignore[assignment]
+        infra = self.state.infra  # type: ignore[assignment]
 
-        for filename, content in self.state.code.files.items():  # type: ignore[union-attr]
+        for filename, content in code.files.items():
             path = self.work_dir / filename
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
 
-        dockerfile = self.state.infra.dockerfile  # type: ignore[union-attr]
-        (self.work_dir / "Dockerfile").write_text(dockerfile, encoding="utf-8")
+        # 1. requirements.txt — authoritative source is code.python_packages.
+        if code.python_packages or "requirements.txt" in infra.dockerfile:
+            req_content = "\n".join(code.python_packages) + "\n" if code.python_packages else ""
+            (self.work_dir / "requirements.txt").write_text(req_content, encoding="utf-8")
 
-        # Generate requirements.txt from the schema-enforced python_packages field.
-        pkgs = self.state.code.python_packages  # type: ignore[union-attr]
-        if pkgs or "requirements.txt" in dockerfile:
-            content = "\n".join(pkgs) + "\n" if pkgs else ""
-            (self.work_dir / "requirements.txt").write_text(content, encoding="utf-8")
+        # 2. Dockerfile — strip any CMD/ENTRYPOINT lines and inject startup_command.
+        #    This corrects DevOps/Developer filename mismatches without regex heuristics.
+        clean_lines = [
+            line for line in infra.dockerfile.splitlines()
+            if not line.strip().upper().startswith(("CMD", "ENTRYPOINT"))
+        ]
+        clean_lines.append(f"CMD {infra.startup_command}")
+        (self.work_dir / "Dockerfile").write_text("\n".join(clean_lines) + "\n", encoding="utf-8")
+
+        # 3. Warn about any remaining missing COPY targets.
+        self._check_dockerfile_copies()
+
+    def _check_dockerfile_copies(self) -> None:
+        """Log warnings for any COPY sources that don't exist in the work dir."""
+        dockerfile = self.work_dir / "Dockerfile"
+        if not dockerfile.exists():
+            return
+        for line in dockerfile.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if not parts or parts[0].upper() != "COPY":
+                continue
+            for src in parts[1:-1]:  # all but dest
+                if src.startswith("--"):
+                    continue
+                if not (self.work_dir / src).exists():
+                    log.warning(
+                        "Dockerfile COPY references missing file %r — build may fail.", src
+                    )
+
+    def _container_is_running(self) -> bool:
+        """Return True if the challenge container is still running (not crashed/exited)."""
+        result = subprocess.run(
+            ["docker", "inspect", "--format", "{{.State.Running}}", self.container_name],
+            capture_output=True, text=True, timeout=5,
+        )
+        return result.returncode == 0 and result.stdout.strip() == "true"
+
+    def _install_solver_deps(self, deps: list[str]) -> subprocess.CompletedProcess | None:
+        """Pre-install Python packages into a host directory with internet access.
+
+        The --internal sandbox network blocks PyPI, so we install first (no network
+        restriction) then mount the result read-only into the solver container.
+        """
+        if not deps:
+            return None
+        deps_dir = self.work_dir / "solver-deps"
+        deps_dir.mkdir(exist_ok=True)
+        return subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{deps_dir}:/deps",
+                SOLVER_IMAGE,
+                "pip", "install", "--quiet", "--no-cache-dir", "-t", "/deps",
+                *deps,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=SOLVE_TIMEOUT_S,
+        )
 
     # ── lifecycle steps ─────────────────────────────────────────────────────
 
@@ -141,56 +218,6 @@ class DockerSandbox:
             cmd.extend(["-p", f"{port}:{port}"])
         cmd.append(self.image_tag)
         return subprocess.run(cmd, capture_output=True, text=True, timeout=START_TIMEOUT_S)
-
-    def _check_dockerfile_copies(self) -> None:
-        """Warn when the Dockerfile COPYs a file that write_files() didn't create.
-
-        This catches Developer/DevOps mismatches (e.g. COPY requirements.txt but
-        no requirements.txt in code.files) before Docker produces a cryptic error.
-        """
-        dockerfile = self.work_dir / "Dockerfile"
-        if not dockerfile.exists():
-            return
-        for line in dockerfile.read_text(encoding="utf-8").splitlines():
-            parts = line.split()
-            if not parts or parts[0].upper() != "COPY":
-                continue
-            # COPY src [src...] dest — all but the last token are sources.
-            sources = parts[1:-1]
-            for src in sources:
-                if src.startswith("--"):  # skip --from=... flags
-                    continue
-                src_path = self.work_dir / src
-                if not src_path.exists():
-                    log.warning(
-                        "Dockerfile COPY references missing file %r — build will fail. "
-                        "The Developer agent should include this file in code.files.",
-                        src,
-                    )
-
-    def _install_solver_deps(self, deps: list[str]) -> subprocess.CompletedProcess | None:
-        """Pre-install Python packages into a host directory with internet access.
-
-        The --internal sandbox network blocks PyPI, so we install first (no network
-        restriction) then mount the result read-only into the solver container.
-        Returns the CompletedProcess if installation was attempted, None if skipped.
-        """
-        if not deps:
-            return None
-        deps_dir = self.work_dir / "solver-deps"
-        deps_dir.mkdir(exist_ok=True)
-        return subprocess.run(
-            [
-                "docker", "run", "--rm",
-                "-v", f"{deps_dir}:/deps",
-                SOLVER_IMAGE,
-                "pip", "install", "--quiet", "--no-cache-dir", "-t", "/deps",
-                *deps,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=SOLVE_TIMEOUT_S,
-        )
 
     def run_solver(self) -> subprocess.CompletedProcess:
         """Run the solve script in a sibling container on the sandbox network.
@@ -228,10 +255,10 @@ class DockerSandbox:
                 timeout=SOLVE_TIMEOUT_S,
             )
 
-        # Python path: pre-install deps with internet, then solve air-gapped.
+        # Python: pre-install deps with internet access, then solve air-gapped.
         install = self._install_solver_deps(solver.dependencies)
         if install is not None and install.returncode != 0:
-            return install  # surface pip failure as the solver result
+            return install
 
         deps_dir = self.work_dir / "solver-deps"
         cmd = [
@@ -266,7 +293,7 @@ class DockerSandbox:
     # ── orchestration ──────────────────────────────────────────────────────
 
     def verify(self) -> tuple[list[ValidationCheck], bool, str]:
-        """Build → start → solve → check flag.
+        """Build → start → wait → solve → check flag.
 
         Returns:
             (checks, flag_captured, raw_output) — `checks` is the per-step result list,
@@ -276,7 +303,6 @@ class DockerSandbox:
         checks: list[ValidationCheck] = []
 
         self.write_files()
-        self._check_dockerfile_copies()
         print(f"[sandbox] work_dir={self.work_dir}  image={self.image_tag}", file=sys.stderr, flush=True)
 
         build = self.build()
@@ -301,9 +327,26 @@ class DockerSandbox:
         if start.returncode != 0:
             return checks, False, start.stderr
 
-        # Give the server time to bind before the solver connects.
+        # Give the server a moment to start, then verify it hasn't crashed.
+        # The solver script is responsible for its own connection retry loop.
+        # We poll from inside the Docker network (via inspect), not the host port,
+        # because --internal networks don't reliably expose ports on macOS Docker Desktop.
+        time.sleep(STARTUP_GRACE_S)
+        if not self._container_is_running():
+            container_logs = subprocess.run(
+                ["docker", "logs", self.container_name],
+                capture_output=True, text=True, timeout=10,
+            )
+            output = container_logs.stdout + container_logs.stderr
+            print(f"[sandbox] container crashed at startup:\n{output}", file=sys.stderr, flush=True)
+            checks.append(ValidationCheck(
+                check="server_ready", passed=False,
+                detail="container exited before solver could run",
+            ))
+            return checks, False, output
+        print("[sandbox] container running", file=sys.stderr, flush=True)
+
         print(f"[sandbox] solve script:\n{self.state.solver.solve_script}", file=sys.stderr, flush=True)  # type: ignore[union-attr]
-        time.sleep(2)
 
         try:
             solver_proc = self.run_solver()
@@ -335,7 +378,6 @@ class DockerSandbox:
                 file=sys.stderr,
                 flush=True,
             )
-            # Also dump container logs to help diagnose server-side issues.
             container_logs = subprocess.run(
                 ["docker", "logs", self.container_name],
                 capture_output=True, text=True, timeout=10,
