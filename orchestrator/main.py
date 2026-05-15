@@ -11,7 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from agents.event_config import load_event_config
-from agents.schemas import CTFState
+from agents.schemas import CTFState, ValidationCheck
 from graph.pipeline import run_pipeline
 from orchestrator.budget import BudgetExhaustedError, fetch_balance, guard_budget, log_run
 from orchestrator.output import save_challenge
@@ -26,6 +26,8 @@ def parse_args_from(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "prompt",
+        nargs="?",
+        default=None,
         help='Challenge description (e.g., "Create a medium web challenge about SQL injection")',
     )
     parser.add_argument(
@@ -50,7 +52,30 @@ def parse_args_from(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="Skip Docker sandbox in the Validator. Overrides config when set.",
     )
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--save-state",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "After the LLM pipeline completes, write the full CTFState JSON to PATH. "
+            "Use with --load-state to replay sandbox checks without re-running LLMs."
+        ),
+    )
+    parser.add_argument(
+        "--load-state",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help=(
+            "Skip the LLM pipeline. Load CTFState from PATH (written by --save-state) "
+            "and run only the deterministic sandbox checks. Free — no API calls."
+        ),
+    )
+    args = parser.parse_args(argv)
+    if args.load_state is None and args.prompt is None:
+        parser.error("prompt is required unless --load-state is used")
+    return args
 
 
 def parse_args() -> argparse.Namespace:
@@ -88,9 +113,61 @@ def build_state(args: argparse.Namespace) -> CTFState:
     return state
 
 
+def _run_sandbox_replay(state: CTFState) -> None:
+    """Run deterministic sandbox checks against a previously saved state.
+
+    No LLM calls. Exits 0 on flag capture, 1 on failure.
+    """
+    from sandbox.docker_runtime import DockerSandbox
+
+    if not DockerSandbox.available():
+        print("Docker is not available — cannot run sandbox replay.", file=sys.stderr)
+        sys.exit(1)
+
+    missing = [f for f in ("manifest", "code", "infra", "solver") if getattr(state, f) is None]
+    if missing:
+        print(f"Loaded state is missing: {missing}. Was it saved after the full pipeline?", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"[replay] challenge: {state.manifest.name}")  # type: ignore[union-attr]
+    print(f"[replay] flag:      {state.manifest.flag}")  # type: ignore[union-attr]
+    print()
+
+    with DockerSandbox(state) as sandbox:
+        checks, flag_captured, output = sandbox.verify()
+
+    passed = [c for c in checks if c.passed]
+    failed = [c for c in checks if not c.passed]
+
+    for c in passed:
+        print(f"  [pass] {c.check}")
+    for c in failed:
+        print(f"  [FAIL] {c.check}: {c.detail}", file=sys.stderr)
+
+    if flag_captured:
+        print(f"\n[replay] Flag captured!")
+        sys.exit(0)
+    else:
+        print(f"\n[replay] Flag NOT captured.", file=sys.stderr)
+        sys.exit(1)
+
+
 async def async_main() -> None:
     load_dotenv()
     args = parse_args()
+
+    # ── Sandbox replay mode (--load-state) ────────────────────────────────
+    if args.load_state:
+        path = args.load_state
+        if not path.exists():
+            print(f"State file not found: {path}", file=sys.stderr)
+            sys.exit(1)
+        state = CTFState.model_validate_json(path.read_text(encoding="utf-8"))
+        print(f"Loaded state from {path}")
+        _run_sandbox_replay(state)
+        return  # _run_sandbox_replay calls sys.exit
+
+    # ── Normal pipeline mode ───────────────────────────────────────────────
     state = build_state(args)
 
     print(f"Generating challenge: {args.prompt}")
@@ -113,6 +190,11 @@ async def async_main() -> None:
             sys.exit(2)
 
     state = await run_pipeline(state)
+
+    # Save pipeline state before validation verdict (if requested).
+    if args.save_state:
+        args.save_state.write_text(state.model_dump_json(indent=2), encoding="utf-8")
+        print(f"[state] Pipeline state saved to {args.save_state}", file=sys.stderr, flush=True)
 
     if _track_budget:
         try:
