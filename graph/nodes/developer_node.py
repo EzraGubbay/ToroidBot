@@ -60,5 +60,12 @@ async def run(state: CTFState) -> CTFState:
             f"Model: {state.model_for('developer')}"
         )
 
+    # DevOps owns the Dockerfile — remove any Dockerfile the Developer included.
+    # Keeping it causes `flag_not_in_source` failures because the Developer often
+    # hardcodes the flag literal, while DevOps correctly uses ARG FLAG.
+    for key in list(code.files.keys()):
+        if key.lower() in ("dockerfile", "docker-compose.yml", "docker-compose.yaml"):
+            del code.files[key]
+
     state.code = code
     return state

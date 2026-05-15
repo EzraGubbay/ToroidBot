@@ -40,5 +40,6 @@ You receive source code from real challenges in the knowledge base. Use it:
 - The flag must not be discoverable by reading source code alone. Use `/flag.txt` read at runtime or similar patterns.
 - For compiled challenges, specify exact compiler flags needed (especially security-relevant ones like `-fno-stack-protector`, `-no-pie`, `-z execstack`).
 - Name files conventionally: `app.py`, `server.js`, `challenge.c`, etc.
+- **Do NOT include a `Dockerfile` or `docker-compose.yml` in `files`** — those are DevOps's responsibility and will be overwritten anyway.
 - **Always populate `python_packages`** with every third-party pip package the app imports (e.g. `["flask", "pyjwt"]`). Leave it empty for non-Python challenges or apps that use only the standard library. This field is used to auto-generate `requirements.txt` — do not also put `requirements.txt` in `files`.
 - **Port binding** — for web challenges, read the port from `os.environ.get('PORT', <sensible_default>)` rather than hardcoding it. Example: `port = int(os.environ.get('PORT', 1337))` then `app.run(host='0.0.0.0', port=port)`. DevOps will set `ENV PORT=<chosen_port>` in the Dockerfile to control the actual binding.
