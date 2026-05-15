@@ -2,7 +2,7 @@
   "task_name": "skipping",
   "description": "Access to `/flag` is denied. Please find a way to access it using tools like curl.\n`curl http://skipping.challenges.beginners.seccon.jp:33455`",
   "category": "web",
-  "difficulty": "1",
+  "difficulty": 1,
   "flag": "ctf4b{y0ur_5k1pp1n6_15_v3ry_n1c3}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/web/skipping",
   "source_files": [
@@ -93,7 +93,7 @@
       "path": "files/app/index.js",
       "path_from_output": "../SECCON_Beginners_CTF_2025/web/skipping/files/app/index.js",
       "language": "javascript",
-      "content": "var express = require(\"express\");\nvar app = express();\n\nconst FLAG = process.env.FLAG;\nconst PORT = process.env.PORT;\n\napp.get(\"/\", (req, res, next) => {\n    return res.send('FLAG \u3092\u3069\u3046\u305e: <a href=\"/flag\">/flag</a>');\n});\n\nconst check = (req, res, next) => {\n    if (!req.headers['x-ctf4b-request'] || req.headers['x-ctf4b-request'] !== 'ctf4b') {\n        return res.status(403).send('403 Forbidden');\n    }\n\n    next();\n}\n\napp.get(\"/flag\", check, (req, res, next) => {\n    return res.send(FLAG);\n})\n\napp.listen(PORT, () => {\n    console.log(`Server is running on port ${PORT}`);\n});"
+      "content": "var express = require(\"express\");\nvar app = express();\n\nconst FLAG = process.env.FLAG;\nconst PORT = process.env.PORT;\n\napp.get(\"/\", (req, res, next) => {\n    return res.send('FLAG をどうぞ: <a href=\"/flag\">/flag</a>');\n});\n\nconst check = (req, res, next) => {\n    if (!req.headers['x-ctf4b-request'] || req.headers['x-ctf4b-request'] !== 'ctf4b') {\n        return res.status(403).send('403 Forbidden');\n    }\n\n    next();\n}\n\napp.get(\"/flag\", check, (req, res, next) => {\n    return res.send(FLAG);\n})\n\napp.listen(PORT, () => {\n    console.log(`Server is running on port ${PORT}`);\n});"
     },
     {
       "role": "challenge_source",

@@ -17,25 +17,43 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 - Web (Python): `python:3.12-slim`
 - Web (Node): `node:22-slim`
 - Web (Java): `eclipse-temurin:21-jre`
-- Pwn/Rev (C/C++): `ubuntu:24.04` (players expect glibc debugging tools)
+- Pwn/Rev (C/C++): `FROM --platform=linux/amd64 ubuntu:24.04` — the `--platform` flag is **required** so x86 binaries compile and run correctly on ARM hosts (Apple Silicon). Without it, GCC produces ARM binaries that break x86 exploit scripts.
 - Crypto: `python:3.12-slim` or `sagemath/sagemath` for Sage challenges
 
 ### Security Hardening
 - Run the challenge as a non-root user. Create a dedicated user (e.g., `ctf`).
-- Place the flag at `/flag.txt`, owned by root, readable only by the challenge process (use `chmod 444` or setuid patterns).
-- Set `WORKDIR` to the application directory.
+- **Flag injection** — NEVER hardcode the flag value in the Dockerfile. The sandbox injects it via `--build-arg FLAG=<value>` at build time. Your Dockerfile must declare `ARG FLAG` near the top and write it to `/flag.txt`:
+  ```
+  ARG FLAG
+  RUN echo "$FLAG" > /flag.txt && chmod 444 /flag.txt
+  ```
+  Do not write the literal flag string anywhere in the Dockerfile or any source file.
+- **Set `WORKDIR /app`** for web/crypto challenges. Do NOT use `/home/ctf/app` as the working directory — `/home/<user>/` directories are often created with restricted permissions that block access. `/app` is created by Docker as root-owned with world-accessible permissions.
 - Drop capabilities where possible.
 - For pwn challenges, include `socat` or `xinetd` to expose the binary over TCP.
 
 ### Build Correctness
 - Copy source files before installing dependencies (layer caching).
+- **Use `code.entry_point` verbatim for your CMD or ENTRYPOINT instruction** — do not assume `app.py` or any other filename. If `entry_point` is `"server.py"`, the CMD must reference `server.py`.
+- **Port consistency** — set `ENV PORT=<port>` in the Dockerfile to the same port you list in `exposed_ports`. Web challenge apps read `os.environ.get('PORT', ...)` to determine which port to bind, so this env var controls the actual listening port. The sandbox passes `TARGET_PORT` from `exposed_ports` to the solver automatically.
 - If the Developer specified compiler flags, use them exactly.
 - For challenges with `requirements.txt` or `package.json`, install dependencies in a separate layer.
 - If the challenge needs specific library versions (e.g., a particular glibc for pwn), pin them.
 
+### Keeping the Image Small
+- **Do NOT install exploit tools in the challenge image.** Tools like `pwntools`, `angr`, `z3-solver`, `gdb` (as a Python package), or any solver-side libraries have no place in the challenge image — they make builds slow (pwntools alone takes 2-4 min to compile) and bloat the image. The challenge image only needs what the challenge server itself runs. The sandbox installs solver dependencies separately.
+- For pwn challenges, the challenge image only needs: the compiled binary, `socat`, and minimal runtime dependencies (e.g. `libc6`). Do not install Python, pip, or any Python packages unless the challenge is a Python service.
+
 ### Networking
 - Web challenges: expose the HTTP port (typically 1337 or 8080).
-- Pwn challenges: use `socat TCP-LISTEN:<port>,reuseaddr,fork EXEC:./challenge` or xinetd.
+- Pwn challenges: use `socat` for simpler setup:
+  ```
+  CMD ["socat", "TCP-LISTEN:1337,reuseaddr,fork", "EXEC:/home/ctf/challenge,stderr"]
+  ```
+  Prefer `socat` over `xinetd` — xinetd requires a config file that is easy to forget. If you must use `xinetd`, write the config **inline** in the Dockerfile with `RUN` (never COPY from a file that the Developer might not have created):
+  ```
+  RUN printf '[...]' > /etc/xinetd.d/challenge
+  ```
 - Crypto challenges that are offline (no server): the Dockerfile should still work for the Validator to build and run the solve script against.
 
 ### Multi-Service (docker-compose)

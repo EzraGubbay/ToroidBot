@@ -2,7 +2,7 @@
   "task_name": "otsupeko",
   "description": "Please enjoy the fake flags.",
   "category": "misc",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/misc/otsupeko",
   "source_files": [

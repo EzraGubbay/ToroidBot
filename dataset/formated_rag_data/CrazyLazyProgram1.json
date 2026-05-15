@@ -2,7 +2,7 @@
   "task_name": "CrazyLazyProgram1",
   "description": "I made it a one-liner because adding line breaks was a hassle.",
   "category": "reversing",
-  "difficulty": "1",
+  "difficulty": 1,
   "flag": "ctf4b{1_1in3r5_mak3_PG_hard_2_r3ad}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/reversing/CrazyLazyProgram1",
   "source_files": [

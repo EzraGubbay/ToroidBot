@@ -2,7 +2,7 @@
   "task_name": "wasm_S_exp",
   "description": "A program that checks the flag for you",
   "category": "reversing",
-  "difficulty": "3",
+  "difficulty": 3,
   "flag": "ctf4b{WAT_4n_345y_l0g1c!}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/reversing/wasm_S_exp",
   "source_files": [

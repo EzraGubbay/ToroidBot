@@ -2,7 +2,7 @@
   "task_name": "Corey's Coredump",
   "description": "Ahh dammit... worked so hard on this decryptor to print the flag, but now it just crashed and my work is gone :( Thankfully I have the coredump and backed up the encrypted flag, pls get the flag decrypted for me!",
   "category": "rev",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/rev/ccdump",
   "source_files": [

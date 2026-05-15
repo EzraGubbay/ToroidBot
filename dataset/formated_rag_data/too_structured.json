@@ -2,7 +2,7 @@
   "task_name": "Too Structured",
   "description": "null",
   "category": "crypto",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "pbctf{McEl13c3_W1th_RE3d_soLOM0n_is_N0t_bu3n0Oo}",
   "challenge_base_path": "../pbctf-2020-challs/crypto/too_structured",
   "source_files": [

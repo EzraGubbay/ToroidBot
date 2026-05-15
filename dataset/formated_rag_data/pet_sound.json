@@ -2,7 +2,7 @@
   "task_name": "pet_sound",
   "description": "Let's teach your pet how to bark.",
   "category": "pwnable",
-  "difficulty": "2",
+  "difficulty": 2,
   "flag": "ctf4b{y0u_expl0it_0v3rfl0w!}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/pwnable/pet_sound",
   "source_files": [

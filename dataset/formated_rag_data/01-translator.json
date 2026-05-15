@@ -2,7 +2,7 @@
   "task_name": "01-Translator",
   "description": "Can't read binary strings? Then I'll translate them for you!",
   "category": "crypto",
-  "difficulty": "2",
+  "difficulty": 2,
   "flag": "ctf4b{n0w_y0u'r3_4_b1n4r13n}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/crypto/01-translator",
   "source_files": [

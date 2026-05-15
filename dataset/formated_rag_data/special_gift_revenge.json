@@ -2,7 +2,7 @@
   "task_name": "Special Gift Revenge",
   "description": "Small d? Too easy. Big d? Easy maybe. So here's 'very' big d. I'll give you a special gift, again.",
   "category": "crypto",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "pbctf{thank_you_rkm0959,_for_finding_unintended_solution}",
   "challenge_base_path": "../pbctf-2020-challs/crypto/special_gift_revenge",
   "source_files": [

@@ -56,19 +56,19 @@ def test_retrieve_returns_empty_message_when_no_matches(fake_db, fake_embed):
 
 def test_retrieve_formats_single_match(fake_db, fake_embed):
     fake_db.fetchall.return_value = [
-        ("abc-uid", "frog-waf", "WAF bypass desc", "web", 3, ["python", "java"]),
+        ("abc-id", "frog-waf", "WAF bypass desc", "web", 3, ["python", "java"]),
     ]
     out = rag.retrieve_similar_challenges("web exploit")
     assert "### frog-waf [web, difficulty 3]" in out
-    assert "abc-uid" in out
+    assert "abc-id" in out
     assert "WAF bypass desc" in out
     assert "python, java" in out
 
 
 def test_retrieve_preserves_db_ordering(fake_db, fake_embed):
     fake_db.fetchall.return_value = [
-        ("uid-1", "pickle-jail", "pickle desc", "misc", 5, ["python"]),
-        ("uid-2", "dynastic", "caesar desc", "crypto", 1, ["python"]),
+        ("id-1", "pickle-jail", "pickle desc", "misc", 5, ["python"]),
+        ("id-2", "dynastic", "caesar desc", "crypto", 1, ["python"]),
     ]
     out = rag.retrieve_similar_challenges("query", top_k=2)
     assert out.index("pickle-jail") < out.index("dynastic")
@@ -207,7 +207,7 @@ def test_embed_returns_array_on_valid_response(monkeypatch):
 def test_format_challenge_brief_layout():
     out = rag._format_challenge_brief("u-1", "name", "desc", "cat", 2, ["python", "bash"])
     assert "### name [cat, difficulty 2]" in out
-    assert "**uid:** `u-1`" in out
+    assert "**id:** `u-1`" in out
     assert "**Languages:** python, bash" in out
     assert "**Description:** desc" in out
 

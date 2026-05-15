@@ -2,7 +2,7 @@
   "task_name": "Ainissesthai",
   "description": "A team of codebreakers had to invent computers to break this cipher. Can you figure out what the flag is? Remote: `nc makethis.remote.plz 1337` Note: enter flag as flag{UPPERCASEPLAINTEXT}",
   "category": "crypto",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "flag{UPPERCASEPLAINTEXT}",
   "challenge_base_path": "../pbctf-2020-challs/crypto/ainissesthai",
   "source_files": [

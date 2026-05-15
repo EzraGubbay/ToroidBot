@@ -2,7 +2,7 @@
   "task_name": "pivot4b",
   "description": "The stack is what you create yourself.",
   "category": "pwnable",
-  "difficulty": "3",
+  "difficulty": 3,
   "flag": "ctf4b{7h3_57ack_c4n_b3_wh3r3v3r_y0u_l1k3}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/pwnable/pivot4b",
   "source_files": [

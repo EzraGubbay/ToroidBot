@@ -2,7 +2,7 @@
   "task_name": "pet_name",
   "description": "Let's give your pet a name. By the way, it seems the flag is written in /home/pwn/flag.txt.",
   "category": "pwnable",
-  "difficulty": "1",
+  "difficulty": 1,
   "flag": "ctf4b{3xp1oit_pet_n4me!}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/pwnable/pet_name",
   "source_files": [

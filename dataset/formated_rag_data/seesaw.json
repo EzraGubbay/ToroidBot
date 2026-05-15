@@ -2,7 +2,7 @@
   "task_name": "seesaw",
   "description": "I'm new to RSA! p and q should be fine like this, right...?",
   "category": "crypto",
-  "difficulty": "1",
+  "difficulty": 1,
   "flag": "ctf4b{unb4l4nc3d_pr1m35_4r3_b4d}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/crypto/seesaw",
   "source_files": [

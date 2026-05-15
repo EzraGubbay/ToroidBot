@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "AI-powered CTF challenge generator using Pydantic-AI"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.115",
     "google-genai",
     "numpy",
     "openai",
@@ -15,6 +16,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
     "mcp>=1.0.0",
+    "uvicorn[standard]>=0.30",
 ]
 
 [project.optional-dependencies]

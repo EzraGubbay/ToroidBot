@@ -2,7 +2,7 @@
   "task_name": "Hyper Bitstreams I",
   "description": "I wrote this crackme in pure assembly, but just for you, I didn't strip any function symbols! See if you can figure out the flag.",
   "category": "rev",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/rev/bitstreams1",
   "source_files": [

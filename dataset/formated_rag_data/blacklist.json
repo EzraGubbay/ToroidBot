@@ -2,7 +2,7 @@
   "task_name": "Blacklist",
   "description": "Last time, we were [just kidding][1], about that program being unexploitable.  This time we are 100% serious: it's totally safe because seccomp(TM) is(TM) SO(TM) secure(TM)! Anyways, I hid the flag in some random file under `/flag_dir`. I'll even give you our docker environment (sans flag, of course) to help you test out your exploit (of course totally, you'll soon find that the flag is so secure!) I am soooo generous! Disclaimer: I am not affiliated with anyone at pwnable.tw... Thanks to david942j for his [seccomp-tools][2] utility!",
   "category": "pwn",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/pwn/blacklist",
   "source_files": [

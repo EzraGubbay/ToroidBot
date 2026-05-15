@@ -2,7 +2,7 @@
   "task_name": "RGNN",
   "description": "Reversing is Great. Nunu Nana",
   "category": "rev",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "pbctf{\");\n        int idx = 1234, count = 0;\n        while (count < 64) {\n            printf(\"%c\", \"rbte\"[board[idx / 50][idx % 50]]);\n            idx = (idx * 1973 + 1361) % 2500;\n            count += 1;\n        }",
   "challenge_base_path": "../pbctf-2020-challs/rev/rgnn",
   "source_files": [

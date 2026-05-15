@@ -7,7 +7,7 @@
     "python",
     "yaml"
   ],
-  "difficulty": "3",
+  "difficulty": 3,
   "flag": "SEKAI{1337}",
   "challenge_base_path": "../cyber-zero/benchmarks/cybench/S23/web/chunky",
   "source_files": [
@@ -254,6 +254,5 @@
         "stateful_shell": false
       }
     ]
-  },
-  "uid": "5ecc3781-ad68-44cc-8719-b1926aee32fc"
+  }
 }

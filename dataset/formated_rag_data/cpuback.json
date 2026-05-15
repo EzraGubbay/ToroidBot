@@ -2,7 +2,7 @@
   "task_name": "cpuback",
   "description": "Someone was handing out free cpus at the mall so I grabbed a couple! They seem to work fine, I wonder why they were giving them away... Login is ctf/ctf",
   "category": "pwn",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/pwn/cpuback",
   "source_files": [

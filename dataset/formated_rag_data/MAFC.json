@@ -2,7 +2,7 @@
   "task_name": "MAFC",
   "description": "Do you want the flag? Then analyze this malware.\nWanna get flag? if so, Reversing this Malware if you can",
   "category": "reversing",
-  "difficulty": "4",
+  "difficulty": 4,
   "flag": "ctf4b{way_2_90!_y0u_suc3553d_2_ana1yz3_Ma1war3!!!}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/reversing/MAFC",
   "source_files": [

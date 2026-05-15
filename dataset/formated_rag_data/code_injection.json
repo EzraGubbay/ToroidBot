@@ -2,7 +2,7 @@
   "task_name": "code_injection",
   "description": "It seems like the flag is displayed under a certain condition.",
   "category": "reversing",
-  "difficulty": "4",
+  "difficulty": 4,
   "flag": "ctf4b{g3t_3nv1r0nm3n7_fr0m_p3b}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/reversing/code_injection",
   "source_files": [

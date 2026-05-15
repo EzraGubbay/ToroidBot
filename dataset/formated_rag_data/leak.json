@@ -2,7 +2,7 @@
   "task_name": "LeaK",
   "description": "I know there's a famous attack on biased nonces. Then, how about this?",
   "category": "crypto",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "pbctf{!!!_https://eprint.iacr.org/2019/023.pdf_$$$}",
   "challenge_base_path": "../pbctf-2020-challs/crypto/leak",
   "source_files": [

@@ -2,7 +2,7 @@
   "task_name": "D-compile",
   "description": "After C language, this is the one!\n\nThis is the next trending programming language!\n\n* `libgphobos5` is required in some environments.\nAlso, use `echo -n` as necessary.\n\nNote: In some environments, `libgphobos5` is required.\nAlso, use the `echo -n` command as necessary.",
   "category": "reversing",
-  "difficulty": "2",
+  "difficulty": 2,
   "flag": "ctf4b{N3xt_Tr3nd_D_1an9uag3_101}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/reversing/d-compile",
   "source_files": [

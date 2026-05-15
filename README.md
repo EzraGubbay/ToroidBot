@@ -78,6 +78,19 @@ models:
 
 Precedence (highest first): **CLI `--model`** → `models.<agent>` → `default_model` → built-in default.
 
+### Supported providers
+
+Any pydantic-ai provider prefix works. Common choices:
+
+| Prefix | Required env | Notes |
+|---|---|---|
+| `google-gla:` | `GEMINI_API_KEY` | Free tier available. Also drives RAG embeddings. |
+| `openai:` | `OPENAI_API_KEY` | |
+| `anthropic:` | `ANTHROPIC_API_KEY` | |
+| `openrouter:<provider>/<model>` | `OPENROUTER_API_KEY` | One key, every model. OpenRouter dashboard surfaces our spend under app_title `ToroidBot` (set automatically). |
+
+**RAG embeddings stay on Gemini AI Studio** regardless of which provider drives the agents. OpenRouter does not proxy Gemini embeddings, and switching embedders mid-corpus would invalidate the indexed vectors. The `GEMINI_API_KEY` is therefore required if you use RAG retrieval, even when every agent is routed through OpenRouter.
+
 ### Override precedence
 
 CLI flags always beat the config:
@@ -90,7 +103,9 @@ ctf-poc "..." --config event.yaml --max-retries 10         # overrides config ma
 
 ### Sample configs
 
-- [`examples/configs/megactf-2026.yaml`](examples/configs/megactf-2026.yaml) — full-fat YAML with every field populated.
+- [`examples/configs/megactf-2026.yaml`](examples/configs/megactf-2026.yaml) — full-fat YAML with every field populated; mix of direct provider keys (`openai:`, `anthropic:`).
+- [`examples/configs/openrouter.yaml`](examples/configs/openrouter.yaml) — every agent routed through OpenRouter with one `OPENROUTER_API_KEY`.
+- [`examples/configs/gemini-only.yaml`](examples/configs/gemini-only.yaml) — every agent on `google-gla:gemini-2.5-flash`, sandbox off; for contributors who only have an AI Studio key.
 - [`examples/configs/minimal.json`](examples/configs/minimal.json) — required fields only.
 
 For the full schema, see [`docs/superpowers/specs/2026-05-14-event-config-design.md`](docs/superpowers/specs/2026-05-14-event-config-design.md).
@@ -299,3 +314,40 @@ ruff check .
 
 See [`DEV.md`](DEV.md) for full architecture, RAG schema, and tech-stack rationale.
 See [`docs/superpowers/`](docs/superpowers/) for design specs and implementation plans.
+
+## API & Developer Notes (2026-05-15)
+
+This repository now includes a development FastAPI server that exposes a compact REST/WebSocket surface for driving the multi-agent pipeline (MVP/dev use). Use this section to get started and to understand the `simulator vs real orchestrator` toggle.
+
+- **Dev server entrypoint**: `api/main.py` (FastAPI app). Run locally with:
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+- **Important env toggles**:
+  - `USE_REAL_ORCHESTRATOR` (default: false) — When truthy the service will attempt to call the repo's real orchestrator (`graph.pipeline.run_pipeline` + `orchestrator.output.save_challenge`). Only enable in a properly provisioned environment (provider keys, DB, Docker, and other dependencies).
+  - `TOROIDBOT_ADMIN_KEY` — Required for admin-only endpoints (settings, debug, some skill/preset writes). Requests must include header `X-API-Key: <value>`.
+
+- **Core endpoints (dev surface)** — See `api/routes/*` for implementations and `API_ENDPOINTS_PLAN.md` for the design. Key routes include:
+  - `POST /generate` — start a run (returns `run_id`).
+  - `GET /runs` & `GET /runs/{run_id}` — list and inspect runs.
+  - WebSocket `ws://.../ws/runs/{run_id}` — realtime streaming of pipeline stage events.
+  - SSE `GET /runs/{run_id}/events` — server-sent events fallback when WS is not used.
+  - `GET /runs/{run_id}/artifacts` and `GET /runs/{run_id}/artifacts/{path}` — list and download artifacts.
+  - KB management under `/kb` (import/list/search), skills under `/skills`, presets under `/presets`, and agent execution helper under `/agents/{agent_name}/execute`.
+
+- **Simulator vs Real orchestrator**:
+  - The default developer-friendly behaviour uses an in-memory simulator so unit tests and local development run quickly without external providers or heavy deps.
+  - When `USE_REAL_ORCHESTRATOR` is enabled and the runtime can import the orchestrator modules, the server will call into the real pipeline. This requires provider API keys (e.g., `GEMINI_API_KEY`) and any DB or vector-store services the orchestrator depends on.
+
+- **Tests**:
+  - Fast local tests that exercise the API surface without heavy external deps: `pytest tests/test_api_endpoints.py`.
+  - The full test suite includes integration/E2E tests that may require Docker, provider keys, or DB services; expect collection failures if those optional deps are not present.
+
+- **Dev notes / where to look**:
+  - Orchestrator facade used by the API: `api/services/orchestrator.py` (gates real pipeline usage behind `USE_REAL_ORCHESTRATOR`).
+  - Routes live in `api/routes/` and schemas in `api/schemas.py`.
+  - Admin auth helper: `api/auth.py`.
+
+If you change the API surface, routes, or environment variables, update this README (endpoints, required env vars, and test instructions) so other contributors and CI understand the change.

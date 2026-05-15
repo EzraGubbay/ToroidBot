@@ -2,7 +2,7 @@
   "task_name": "XSP (Todo)",
   "description": "Another notes app: [INSERT CHALLENGE URL HERE]",
   "category": "web",
-  "difficulty": "unknown",
+  "difficulty": 0,
   "flag": "",
   "challenge_base_path": "../pbctf-2020-challs/web/xsp",
   "source_files": [

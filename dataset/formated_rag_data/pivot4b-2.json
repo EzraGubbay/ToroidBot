@@ -2,7 +2,7 @@
   "task_name": "pivot4b++",
   "description": "The gifts from pivot4b have disappeared...",
   "category": "pwnable",
-  "difficulty": "3",
+  "difficulty": 3,
   "flag": "ctf4b{f3wer_g1fts_gr3ater_j0y}",
   "challenge_base_path": "../SECCON_Beginners_CTF_2025/pwnable/pivot4b-2",
   "source_files": [
