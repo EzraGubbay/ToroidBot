@@ -125,11 +125,15 @@ class DockerSandbox:
             req_content = "\n".join(code.python_packages) + "\n" if code.python_packages else ""
             (self.work_dir / "requirements.txt").write_text(req_content, encoding="utf-8")
 
-        # 2. Dockerfile — strip any CMD/ENTRYPOINT lines and inject startup_command.
-        #    This corrects DevOps/Developer filename mismatches without regex heuristics.
+        # 2. Dockerfile — strip CMD/ENTRYPOINT/USER lines and inject startup_command.
+        #    CMD/ENTRYPOINT: corrects DevOps/Developer filename mismatches.
+        #    USER: DevOps sometimes emits `USER ctf` without `RUN useradd`, which builds
+        #    successfully but fails at container-start time with "no matching entries in
+        #    passwd file". Running as root in the sandbox is safe and avoids this class
+        #    of error; real deployments can enforce non-root separately.
         clean_lines = [
             line for line in infra.dockerfile.splitlines()
-            if not line.strip().upper().startswith(("CMD", "ENTRYPOINT"))
+            if not line.strip().upper().startswith(("CMD", "ENTRYPOINT", "USER"))
         ]
         clean_lines.append(f"CMD {infra.startup_command}")
         (self.work_dir / "Dockerfile").write_text("\n".join(clean_lines) + "\n", encoding="utf-8")
