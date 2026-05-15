@@ -37,7 +37,12 @@ You receive source code from real challenges in the knowledge base. Use it:
 ## Code Standards
 - Use the language and framework specified in the manifest.
 - Include comments that a real developer might write — not hints about the vulnerability.
-- The flag must not be discoverable by reading source code alone. Use `/flag.txt` read at runtime or similar patterns.
+- **Never hardcode or inline the flag string in source code — not even as a fallback.** Read the flag exclusively from `/flag.txt` at runtime. If `/flag.txt` is missing (it won't be in production — the sandbox injects it via `--build-arg`), return an HTTP 500 error or raise an exception. A fallback like `flag = 'CTF{example}'` will fail the `flag_not_in_source` check and force a retry. The correct pattern is:
+  ```python
+  with open('/flag.txt') as f:
+      flag = f.read().strip()
+  ```
+  No fallback. No default value. Just read the file.
 - For compiled challenges, specify exact compiler flags needed (especially security-relevant ones like `-fno-stack-protector`, `-no-pie`, `-z execstack`).
 - Name files conventionally: `app.py`, `server.js`, `challenge.c`, etc.
 - **Do NOT include a `Dockerfile` or `docker-compose.yml` in `files`** — those are DevOps's responsibility and will be overwritten anyway.

@@ -84,11 +84,22 @@ async def _llm_review(state: CTFState) -> ValidationResult:
     assert state.infra is not None and state.solver is not None
 
     agent = create_agent("validator", ValidationResult, model=state.model_for("validator"))
+    event_info = ""
+    if state.event is not None:
+        event_info = (
+            f"Event: {state.event.name}\n"
+            f"Flag regex (all flags must match this): {state.event.flag_regex}\n"
+            "NOTE: The flag format is defined by flag_regex above. Do NOT flag the "
+            "flag prefix as wrong — e.g. if flag_regex requires 'OR{', then 'OR{...}' "
+            "is correct. Only flag the flag format as wrong if it literally does not "
+            "match the regex.\n\n"
+        )
     prompt = (
         "Review this challenge for unintended bugs (default credentials, extra "
         "injection points, info leaks, missing auth) and qualitative issues. "
         "The sandbox already verified build/run/solve mechanics — focus on what "
         "the sandbox can't see.\n\n"
+        f"{event_info}"
         f"Manifest:\n{state.manifest.model_dump_json(indent=2)}\n\n"
         f"Story:\n{state.story.model_dump_json(indent=2) if state.story else 'N/A'}\n\n"
         f"Code:\n{state.code.model_dump_json(indent=2)}\n\n"
@@ -145,13 +156,37 @@ async def run(state: CTFState) -> CTFState:
     combined_checks = checks + list(llm_result.checks)
     retry_target = _decide_retry_target(combined_checks)
 
+    # Prepend deterministic failures to retry_instructions so the developer
+    # always sees concrete, specific fixes — not just LLM commentary.
+    assert state.manifest is not None  # narrowed above
+    deterministic_failures = [c for c in checks if not c.passed]
+    det_prefix = ""
+    if deterministic_failures:
+        lines = ["DETERMINISTIC CHECK FAILURES (fix these first):"]
+        for c in deterministic_failures:
+            lines.append(f"  - {c.check}: {c.detail}")
+        # Add explicit flag-in-source guidance when that specific check fails.
+        if any(c.check == "flag_not_in_source" for c in deterministic_failures):
+            flag = state.manifest.flag
+            lines.append(
+                f"\nCRITICAL: The flag literal {flag!r} must NEVER appear in source code. "
+                "Read it exclusively from '/flag.txt' at runtime — no fallback, no default:\n"
+                "    with open('/flag.txt') as f:\n"
+                "        flag = f.read().strip()\n"
+                "Remove every inline occurrence of the flag string, including fallback "
+                "values like `flag = 'OR{...}'` or `flag_content = 'OR{...}'`."
+            )
+        det_prefix = "\n".join(lines) + "\n\n"
+
+    retry_instructions = det_prefix + (llm_result.retry_instructions or "")
+
     state.validation = ValidationResult(
         passed=combined_passed,
         flag_captured=flag_captured,
         checks=combined_checks,
         errors=errors + list(llm_result.errors),
         suggestions=list(llm_result.suggestions),
-        retry_instructions=llm_result.retry_instructions,
+        retry_instructions=retry_instructions,
         retry_target=retry_target,
     )
     return state

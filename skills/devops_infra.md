@@ -28,7 +28,7 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
   RUN echo "$FLAG" > /flag.txt && chmod 444 /flag.txt
   ```
   Do not write the literal flag string anywhere in the Dockerfile or any source file.
-- Set `WORKDIR` to the application directory.
+- **Set `WORKDIR /app`** for web/crypto challenges. Do NOT use `/home/ctf/app` as the working directory — `/home/<user>/` directories are often created with restricted permissions that block access. `/app` is created by Docker as root-owned with world-accessible permissions.
 - Drop capabilities where possible.
 - For pwn challenges, include `socat` or `xinetd` to expose the binary over TCP.
 
