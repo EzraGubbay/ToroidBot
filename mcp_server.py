@@ -21,7 +21,8 @@ mcp = FastMCP("ToroidBot")
 async def generate_challenge(
     prompt: str,
     config_path: Optional[str] = None,
-    no_sandbox: bool = False
+    no_sandbox: bool = False,
+    model: str = "openrouter:anthropic/claude-sonnet-4"
 ) -> str:
     """Generate a new CTF challenge based on a natural language prompt.
     
@@ -29,12 +30,13 @@ async def generate_challenge(
         prompt: The challenge concept, e.g. "Medium web SQLi challenge".
         config_path: Optional absolute path to an event config (JSON/YAML).
         no_sandbox: If true, skips the Docker Validator sandbox.
+        model: Model string to use for generation (defaults to Claude 4 Sonnet).
     """
     event = None
     if config_path:
         event = load_event_config(Path(config_path))
     
-    state = CTFState(user_prompt=prompt, event=event)
+    state = CTFState(user_prompt=prompt, event=event, model=model)
     
     if event:
         state.max_retries = event.max_retries
