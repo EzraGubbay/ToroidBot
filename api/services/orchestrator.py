@@ -22,15 +22,24 @@ from api.schemas import (
 # real orchestrator with the `USE_REAL_ORCHESTRATOR` env var so CI/dev can
 # opt into running the full pipeline explicitly.
 try:
-    from graph.pipeline import run_pipeline  # async
+    from graph.nodes import (
+        architect_node,
+        developer_node,
+        devops_node,
+        solver_node,
+        storyteller_node,
+        validator_node,
+    )
     from orchestrator.output import save_challenge
-    from agents.schemas import CTFState
+    from agents.schemas import CTFState, RetryTarget
     from agents.event_config import EventConfig
     _imports_ok = True
 except Exception:
-    run_pipeline = None
+    architect_node = developer_node = devops_node = None
+    solver_node = storyteller_node = validator_node = None
     save_challenge = None
     CTFState = None
+    RetryTarget = None
     EventConfig = None
     _imports_ok = False
 
@@ -120,21 +129,83 @@ class OrchestratorService:
             return None
         return loop.create_task(coro)
 
+    def _stage_start(self, run_id: str, store: dict, name: str) -> None:
+        for s in store['stages']:
+            if s.name == name:
+                s.status = 'running'
+                s.started_at = datetime.now(timezone.utc)
+                break
+        store['summary'].current_stage = name
+        self._log(run_id, 'info', f'{name} started')
+
+    def _stage_end(self, run_id: str, store: dict, name: str, *, failed: bool = False) -> None:
+        for s in store['stages']:
+            if s.name == name:
+                s.status = 'failed' if failed else 'passed'
+                s.finished_at = datetime.now(timezone.utc)
+                break
+        self._log(run_id, 'info', f'{name} {"failed" if failed else "finished"}')
+
     async def _run_pipeline_and_record(self, run_id: str, state):
-        """Run the real graph.pipeline.run_pipeline and record outputs to the
-        in-memory store. This function is scheduled as a background task.
+        """Run each agent node in turn, updating stage status after every step
+        so the WS stream can emit live stage_update frames.
         """
         store = self.runs.get(run_id)
         if not store:
             return
         store['summary'].status = 'running'
-        store['summary'].current_stage = 'Architect'
         self._log(run_id, 'info', 'Pipeline started (real orchestrator)')
+
+        _INITIAL_STAGES = [
+            ('Architect',   architect_node),
+            ('Storyteller', storyteller_node),
+            ('Developer',   developer_node),
+            ('DevOps',      devops_node),
+            ('Solver',      solver_node),
+            ('Validator',   validator_node),
+        ]
+
+        current_stage_name = None
         try:
-            result_state = await run_pipeline(state)
+            for name, node in _INITIAL_STAGES:
+                if store['summary'].status == 'cancelled':
+                    return
+                current_stage_name = name
+                self._stage_start(run_id, store, name)
+                state = await node.run(state)
+                self._stage_end(run_id, store, name)
+                current_stage_name = None
+
+            # Retry loop — mirrors graph/pipeline.py
+            while not (state.validation and state.validation.passed):
+                if state.retry_count >= state.max_retries:
+                    break
+                state.retry_count += 1
+                target = state.validation.retry_target if state.validation else RetryTarget.DEVELOPER
+                retry_stages = (
+                    [('Solver', solver_node)]
+                    if target == RetryTarget.SOLVER
+                    else [
+                        ('Developer', developer_node),
+                        ('DevOps',    devops_node),
+                        ('Solver',    solver_node),
+                    ]
+                )
+                for name, node in retry_stages + [('Validator', validator_node)]:
+                    if store['summary'].status == 'cancelled':
+                        return
+                    current_stage_name = name
+                    self._stage_start(run_id, store, name)
+                    state = await node.run(state)
+                    self._stage_end(run_id, store, name)
+                    current_stage_name = None
+
+            result_state = state
             if store['summary'].status == 'cancelled':
                 return
         except Exception as e:
+            if current_stage_name:
+                self._stage_end(run_id, store, current_stage_name, failed=True)
             store['summary'].status = 'failed'
             store['summary'].finished_at = datetime.now(timezone.utc)
             self._log(run_id, 'error', f'Pipeline failed: {e}')

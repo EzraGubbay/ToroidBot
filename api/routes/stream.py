@@ -17,7 +17,7 @@ async def ws_run(websocket: WebSocket, run_id: str):
             await websocket.send_json({'type': 'error', 'message': 'run not found'})
             await websocket.close()
             return
-        await websocket.send_json({'type': 'init', 'summary': d.summary.model_dump()})
+        await websocket.send_json({'type': 'init', 'summary': d.summary.model_dump(mode='json')})
         # poll and stream changes until finished
         prev_stage_state: dict[str, tuple] = {}
         while True:
@@ -31,7 +31,7 @@ async def ws_run(websocket: WebSocket, run_id: str):
                     await websocket.send_json({'type': 'stage_update', 'stage': s.name, 'status': s.status, 'summary': s.summary})
                     prev_stage_state[s.name] = stage_state
             if d.summary.status in ('succeeded', 'failed', 'cancelled'):
-                await websocket.send_json({'type': 'validation_update', 'status': d.summary.status, 'validation': (d.validation.model_dump() if d.validation else None)})
+                await websocket.send_json({'type': 'validation_update', 'status': d.summary.status, 'validation': (d.validation.model_dump(mode='json') if d.validation else None)})
                 break
             await asyncio.sleep(0.5)
     except WebSocketDisconnect:
@@ -63,7 +63,7 @@ def sse_events(run_id: str):
                     yield f"data: {json.dumps(payload, default=str)}\n\n"
                     prev_stage_state[s.name] = stage_state
             if d.summary.status in ('succeeded', 'failed', 'cancelled'):
-                payload = {"type": "validation_update", "status": d.summary.status, "validation": (d.validation.model_dump() if d.validation else None)}
+                payload = {"type": "validation_update", "status": d.summary.status, "validation": (d.validation.model_dump(mode='json') if d.validation else None)}
                 yield f"data: {json.dumps(payload, default=str)}\n\n"
                 break
             await asyncio.sleep(0.5)

@@ -44,6 +44,9 @@ def save_challenge(state: CTFState) -> Path:
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
 
+    # Write flag.txt so Dockerfiles that COPY flag.txt /flag.txt work out of the box
+    (challenge_dir / "flag.txt").write_text(state.manifest.flag, encoding="utf-8")
+
     # Write Dockerfile
     (challenge_dir / "Dockerfile").write_text(state.infra.dockerfile, encoding="utf-8")
 
