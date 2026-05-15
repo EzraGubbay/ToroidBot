@@ -22,7 +22,12 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 
 ### Security Hardening
 - Run the challenge as a non-root user. Create a dedicated user (e.g., `ctf`).
-- Place the flag at `/flag.txt`, owned by root, readable only by the challenge process (use `chmod 444` or setuid patterns).
+- **Flag injection** — NEVER hardcode the flag value in the Dockerfile. The sandbox injects it via `--build-arg FLAG=<value>` at build time. Your Dockerfile must declare `ARG FLAG` near the top and write it to `/flag.txt`:
+  ```
+  ARG FLAG
+  RUN echo "$FLAG" > /flag.txt && chmod 444 /flag.txt
+  ```
+  Do not write the literal flag string anywhere in the Dockerfile or any source file.
 - Set `WORKDIR` to the application directory.
 - Drop capabilities where possible.
 - For pwn challenges, include `socat` or `xinetd` to expose the binary over TCP.
@@ -30,6 +35,7 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 ### Build Correctness
 - Copy source files before installing dependencies (layer caching).
 - **Use `code.entry_point` verbatim for your CMD or ENTRYPOINT instruction** — do not assume `app.py` or any other filename. If `entry_point` is `"server.py"`, the CMD must reference `server.py`.
+- **Port consistency** — set `ENV PORT=<port>` in the Dockerfile to the same port you list in `exposed_ports`. Web challenge apps read `os.environ.get('PORT', ...)` to determine which port to bind, so this env var controls the actual listening port. The sandbox passes `TARGET_PORT` from `exposed_ports` to the solver automatically.
 - If the Developer specified compiler flags, use them exactly.
 - For challenges with `requirements.txt` or `package.json`, install dependencies in a separate layer.
 - If the challenge needs specific library versions (e.g., a particular glibc for pwn), pin them.

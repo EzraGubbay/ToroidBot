@@ -188,8 +188,15 @@ class DockerSandbox:
     # ── lifecycle steps ─────────────────────────────────────────────────────
 
     def build(self) -> subprocess.CompletedProcess:
+        """Build the challenge image, injecting the flag as a build arg.
+
+        Using --build-arg keeps the flag out of the Dockerfile source (which is
+        player-readable) while still baking it into /flag.txt at build time.
+        """
+        _require(self.state.manifest, "state.manifest")
+        flag = self.state.manifest.flag  # type: ignore[union-attr]
         return subprocess.run(
-            ["docker", "build", "-t", self.image_tag, "."],
+            ["docker", "build", "-t", self.image_tag, "--build-arg", f"FLAG={flag}", "."],
             cwd=self.work_dir,
             capture_output=True,
             text=True,
@@ -205,7 +212,12 @@ class DockerSandbox:
         )
 
     def start(self) -> subprocess.CompletedProcess:
-        """Start the challenge container attached to the sandbox network."""
+        """Start the challenge container attached to the sandbox network.
+
+        No host port publishing (-p) — the solver reaches the challenge via the
+        Docker-internal hostname, so publishing to the host is unnecessary and
+        risks conflicts with services already bound on the host (e.g. AirPlay on 5000).
+        """
         _require(self.state.infra, "state.infra")
         cmd = [
             "docker", "run", "-d",
@@ -213,10 +225,8 @@ class DockerSandbox:
             "--network", self.network_name,
             "--cap-drop", "ALL",
             "--security-opt", "no-new-privileges",
+            self.image_tag,
         ]
-        for port in self.state.infra.exposed_ports:  # type: ignore[union-attr]
-            cmd.extend(["-p", f"{port}:{port}"])
-        cmd.append(self.image_tag)
         return subprocess.run(cmd, capture_output=True, text=True, timeout=START_TIMEOUT_S)
 
     def run_solver(self) -> subprocess.CompletedProcess:
@@ -236,12 +246,18 @@ class DockerSandbox:
         solve_path = self.work_dir / f"solve{ext}"
         solve_path.write_text(solver.solve_script, encoding="utf-8")
 
+        # Pass TARGET_PORT from infra.exposed_ports so the solver knows which port
+        # to connect to regardless of what port the app hardcodes internally.
+        infra = self.state.infra  # type: ignore[assignment]
+        target_port = str(infra.exposed_ports[0]) if infra and infra.exposed_ports else "1337"
+
         if solver.solve_language == "bash":
             return subprocess.run(
                 [
                     "docker", "run", "--rm",
                     "--network", self.network_name,
                     "-e", f"TARGET_HOST={self.container_name}",
+                    "-e", f"TARGET_PORT={target_port}",
                     "--read-only",
                     "--tmpfs", "/tmp",
                     "--cap-drop", "ALL",
@@ -265,6 +281,7 @@ class DockerSandbox:
             "docker", "run", "--rm",
             "--network", self.network_name,
             "-e", f"TARGET_HOST={self.container_name}",
+            "-e", f"TARGET_PORT={target_port}",
             "--read-only",
             "--tmpfs", "/tmp",
             "--cap-drop", "ALL",
