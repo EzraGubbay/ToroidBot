@@ -26,7 +26,7 @@ You receive source code from real challenges in the knowledge base. Use it:
 2. Study RAG source code for similar challenges. Note the application structure, how the vulnerability is embedded, and what makes the code feel realistic.
 3. Design the application structure based on RAG patterns. Even simple challenges need enough surrounding code to feel realistic — a login page, a game loop, a crypto implementation — not just the bare vulnerability.
 4. Implement the vulnerability naturally, following the embedding style you observed in RAG examples. It should look like a plausible developer mistake, not a planted backdoor.
-5. For web challenges: include a working frontend if players interact via browser. For pwn/rev: produce compilable C/C++ or a binary-ready script.
+5. For web challenges: include a working frontend if players interact via browser. For pwn/rev: produce **only** the C/C++ source and a Makefile — do NOT write a Python server to wrap the binary. DevOps will use `socat` to expose it over TCP. A Python wrapper is unnecessary complexity and forces Python + pip into the image.
 6. Verify there are no other exploitable flaws. Common accidental bugs to avoid:
    - Unintended command injection via unsanitized inputs outside the target vuln
    - Directory traversal in file-serving code
@@ -37,6 +37,14 @@ You receive source code from real challenges in the knowledge base. Use it:
 ## Code Standards
 - Use the language and framework specified in the manifest.
 - Include comments that a real developer might write — not hints about the vulnerability.
-- The flag must not be discoverable by reading source code alone. Use `/flag.txt` read at runtime or similar patterns.
+- **Never hardcode or inline the flag string in source code — not even as a fallback.** Read the flag exclusively from `/flag.txt` at runtime. If `/flag.txt` is missing (it won't be in production — the sandbox injects it via `--build-arg`), return an HTTP 500 error or raise an exception. A fallback like `flag = 'CTF{example}'` will fail the `flag_not_in_source` check and force a retry. The correct pattern is:
+  ```python
+  with open('/flag.txt') as f:
+      flag = f.read().strip()
+  ```
+  No fallback. No default value. Just read the file.
 - For compiled challenges, specify exact compiler flags needed (especially security-relevant ones like `-fno-stack-protector`, `-no-pie`, `-z execstack`).
 - Name files conventionally: `app.py`, `server.js`, `challenge.c`, etc.
+- **Do NOT include a `Dockerfile` or `docker-compose.yml` in `files`** — those are DevOps's responsibility and will be overwritten anyway.
+- **Always populate `python_packages`** with every third-party pip package the **challenge server** imports (e.g. `["flask", "pyjwt"]`). Leave it empty for non-Python challenges, pwn/rev challenges (the challenge server is a binary, not Python), or apps that use only the standard library. **Never list solver or exploit tools** (`pwntools`, `angr`, `z3-solver`, etc.) here — those go in `ChallengeSolver.dependencies`, not in the challenge image. This field is used to auto-generate `requirements.txt` — do not also put `requirements.txt` in `files`.
+- **Port binding** — for web challenges, read the port from `os.environ.get('PORT', <sensible_default>)` rather than hardcoding it. Example: `port = int(os.environ.get('PORT', 1337))` then `app.run(host='0.0.0.0', port=port)`. DevOps will set `ENV PORT=<chosen_port>` in the Dockerfile to control the actual binding.

@@ -51,6 +51,33 @@ async def run(state: CTFState) -> CTFState:
 
     prompt = _build_developer_prompt(state, rag_context)
     result = await agent.run(prompt)
+    code = result.output
 
-    state.code = result.output
+    if not code.files:
+        raise RuntimeError(
+            "Developer agent returned empty files dict — no source code was generated. "
+            "This usually indicates a structured-output failure with the chosen model. "
+            f"Model: {state.model_for('developer')}"
+        )
+
+    # Remove infrastructure files that the Developer must not own:
+    # - Dockerfile/compose: DevOps generates these; Developer's version often has a
+    #   hardcoded flag literal that trips `flag_not_in_source`.
+    # - flag.txt: should never be in code.files — the flag is injected at build time
+    #   via --build-arg FLAG=... into /flag.txt inside the image.
+    _devops_owned = {"dockerfile", "docker-compose.yml", "docker-compose.yaml", "flag.txt"}
+    for key in list(code.files.keys()):
+        if key.lower() in _devops_owned:
+            del code.files[key]
+
+    # Strip solver-only packages from python_packages. The Developer sometimes lists
+    # exploit tools (pwntools, angr, z3-solver) that belong in the solve script, not
+    # the challenge image. Installing them bloats the image and can cause build timeouts.
+    _solver_packages = {"pwntools", "angr", "z3-solver", "z3", "capstone", "unicorn", "keystone-engine"}
+    if code.python_packages:
+        code.python_packages = [
+            p for p in code.python_packages if p.lower() not in _solver_packages
+        ]
+
+    state.code = code
     return state

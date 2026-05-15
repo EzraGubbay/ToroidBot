@@ -81,6 +81,13 @@ class ChallengeCode(BaseModel):
     intended_vulnerability: str = Field(
         description="Restated vulnerability with file, function, and line range"
     )
+    python_packages: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Third-party pip packages the challenge app requires (e.g. ['flask', 'pyjwt']). "
+            "Used to auto-generate requirements.txt. Empty list for non-Python challenges."
+        ),
+    )
 
 
 class ChallengeInfra(BaseModel):
