@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}[a-z0-9]$")
 
 SOLVER_IMAGE = "python:3.12-slim"
-BUILD_TIMEOUT_S = 180
+BUILD_TIMEOUT_S = 360  # 6 min — first build of ubuntu:24.04 amd64 + apt + compile can take ~3-4 min
 START_TIMEOUT_S = 30
 SOLVE_TIMEOUT_S = 90
 TEARDOWN_TIMEOUT_S = 30
@@ -344,7 +344,15 @@ class DockerSandbox:
         self.write_files()
         print(f"[sandbox] work_dir={self.work_dir}  image={self.image_tag}", file=sys.stderr, flush=True)
 
-        build = self.build()
+        try:
+            build = self.build()
+        except subprocess.TimeoutExpired:
+            print(f"[sandbox] docker build TIMED OUT after {BUILD_TIMEOUT_S}s", file=sys.stderr, flush=True)
+            checks.append(ValidationCheck(
+                check="docker_build", passed=False,
+                detail=f"Build timed out after {BUILD_TIMEOUT_S}s — image pull + apt install may be slow on first run",
+            ))
+            return checks, False, f"Build timed out after {BUILD_TIMEOUT_S}s"
         print(f"[sandbox] docker build exit={build.returncode}", file=sys.stderr, flush=True)
         if build.returncode != 0:
             print(f"[sandbox] build stderr:\n{build.stderr[:3000]}", file=sys.stderr, flush=True)
