@@ -8,11 +8,15 @@ exploit code cannot reach the developer's machine.
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from agents.schemas import CTFState, ValidationCheck
 
@@ -131,12 +135,65 @@ class DockerSandbox:
         cmd.append(self.image_tag)
         return subprocess.run(cmd, capture_output=True, text=True, timeout=START_TIMEOUT_S)
 
+    def _check_dockerfile_copies(self) -> None:
+        """Warn when the Dockerfile COPYs a file that write_files() didn't create.
+
+        This catches Developer/DevOps mismatches (e.g. COPY requirements.txt but
+        no requirements.txt in code.files) before Docker produces a cryptic error.
+        """
+        dockerfile = self.work_dir / "Dockerfile"
+        if not dockerfile.exists():
+            return
+        for line in dockerfile.read_text(encoding="utf-8").splitlines():
+            parts = line.split()
+            if not parts or parts[0].upper() != "COPY":
+                continue
+            # COPY src [src...] dest — all but the last token are sources.
+            sources = parts[1:-1]
+            for src in sources:
+                if src.startswith("--"):  # skip --from=... flags
+                    continue
+                src_path = self.work_dir / src
+                if not src_path.exists():
+                    log.warning(
+                        "Dockerfile COPY references missing file %r — build will fail. "
+                        "The Developer agent should include this file in code.files.",
+                        src,
+                    )
+
+    def _install_solver_deps(self, deps: list[str]) -> subprocess.CompletedProcess | None:
+        """Pre-install Python packages into a host directory with internet access.
+
+        The --internal sandbox network blocks PyPI, so we install first (no network
+        restriction) then mount the result read-only into the solver container.
+        Returns the CompletedProcess if installation was attempted, None if skipped.
+        """
+        if not deps:
+            return None
+        deps_dir = self.work_dir / "solver-deps"
+        deps_dir.mkdir(exist_ok=True)
+        return subprocess.run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{deps_dir}:/deps",
+                SOLVER_IMAGE,
+                "pip", "install", "--quiet", "--no-cache-dir", "-t", "/deps",
+                *deps,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=SOLVE_TIMEOUT_S,
+        )
+
     def run_solver(self) -> subprocess.CompletedProcess:
         """Run the solve script in a sibling container on the sandbox network.
 
         The script never executes on the host. The solver container is ephemeral,
         read-only, drops all capabilities, and reaches the challenge via the
         Docker-internal hostname (set as $TARGET_HOST).
+
+        Python dependencies are pre-installed with internet access into a bind-mount
+        so that the actual solve step runs fully air-gapped on the --internal network.
         """
         _require(self.state.solver, "state.solver")
         solver = self.state.solver  # type: ignore[assignment]
@@ -145,30 +202,46 @@ class DockerSandbox:
         solve_path = self.work_dir / f"solve{ext}"
         solve_path.write_text(solver.solve_script, encoding="utf-8")
 
-        deps = " ".join(_quote(d) for d in solver.dependencies)
         if solver.solve_language == "bash":
-            inner = "bash /solve.sh"
-        else:
-            install = f"pip install --quiet --no-cache-dir {deps} && " if deps else ""
-            inner = f"{install}python /solve.py"
+            return subprocess.run(
+                [
+                    "docker", "run", "--rm",
+                    "--network", self.network_name,
+                    "-e", f"TARGET_HOST={self.container_name}",
+                    "--read-only",
+                    "--tmpfs", "/tmp",
+                    "--cap-drop", "ALL",
+                    "--security-opt", "no-new-privileges",
+                    "-v", f"{solve_path}:/solve.sh:ro",
+                    SOLVER_IMAGE,
+                    "bash", "/solve.sh",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=SOLVE_TIMEOUT_S,
+            )
 
-        return subprocess.run(
-            [
-                "docker", "run", "--rm",
-                "--network", self.network_name,
-                "-e", f"TARGET_HOST={self.container_name}",
-                "--read-only",
-                "--tmpfs", "/tmp",
-                "--cap-drop", "ALL",
-                "--security-opt", "no-new-privileges",
-                "-v", f"{solve_path}:/solve{ext}:ro",
-                SOLVER_IMAGE,
-                "sh", "-c", inner,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=SOLVE_TIMEOUT_S,
-        )
+        # Python path: pre-install deps with internet, then solve air-gapped.
+        install = self._install_solver_deps(solver.dependencies)
+        if install is not None and install.returncode != 0:
+            return install  # surface pip failure as the solver result
+
+        deps_dir = self.work_dir / "solver-deps"
+        cmd = [
+            "docker", "run", "--rm",
+            "--network", self.network_name,
+            "-e", f"TARGET_HOST={self.container_name}",
+            "--read-only",
+            "--tmpfs", "/tmp",
+            "--cap-drop", "ALL",
+            "--security-opt", "no-new-privileges",
+            "-v", f"{solve_path}:/solve.py:ro",
+        ]
+        if deps_dir.exists():
+            cmd += ["-v", f"{deps_dir}:/deps:ro", "-e", "PYTHONPATH=/deps"]
+        cmd += [SOLVER_IMAGE, "python", "/solve.py"]
+
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=SOLVE_TIMEOUT_S)
 
     def teardown(self) -> None:
         """Best-effort cleanup. Safe to call multiple times."""
@@ -195,22 +268,37 @@ class DockerSandbox:
         _require(self.state.solver, "state.solver")
         checks: list[ValidationCheck] = []
 
+        import sys
+
         self.write_files()
+        self._check_dockerfile_copies()
+        print(f"[sandbox] work_dir={self.work_dir}  image={self.image_tag}", file=sys.stderr, flush=True)
 
         build = self.build()
+        print(f"[sandbox] docker build exit={build.returncode}", file=sys.stderr, flush=True)
+        if build.returncode != 0:
+            print(f"[sandbox] build stderr:\n{build.stderr[:1000]}", file=sys.stderr, flush=True)
         checks.append(_check_from_proc("docker_build", build))
         if build.returncode != 0:
             return checks, False, build.stderr
 
         net = self.create_network()
+        print(f"[sandbox] network create exit={net.returncode}", file=sys.stderr, flush=True)
         checks.append(_check_from_proc("docker_network_create", net))
         if net.returncode != 0:
             return checks, False, net.stderr
 
         start = self.start()
+        print(f"[sandbox] container start exit={start.returncode}", file=sys.stderr, flush=True)
+        if start.returncode != 0:
+            print(f"[sandbox] start stderr:\n{start.stderr[:500]}", file=sys.stderr, flush=True)
         checks.append(_check_from_proc("container_start", start))
         if start.returncode != 0:
             return checks, False, start.stderr
+
+        # Give the server time to bind before the solver connects.
+        print(f"[sandbox] solve script:\n{self.state.solver.solve_script}", file=sys.stderr, flush=True)  # type: ignore[union-attr]
+        time.sleep(2)
 
         try:
             solver_proc = self.run_solver()
@@ -234,6 +322,25 @@ class DockerSandbox:
             detail="flag found in solver stdout" if flag_found
             else f"expected {expected!r} not present in solver output",
         ))
+        if not flag_found:
+            import sys
+            print(
+                f"[sandbox] solver exit={solver_proc.returncode}\n"
+                f"[sandbox] stdout={solver_proc.stdout!r}\n"
+                f"[sandbox] stderr={solver_proc.stderr!r}",
+                file=sys.stderr,
+                flush=True,
+            )
+            # Also dump container logs to help diagnose server-side issues.
+            container_logs = subprocess.run(
+                ["docker", "logs", self.container_name],
+                capture_output=True, text=True, timeout=10,
+            )
+            print(
+                f"[sandbox] container logs:\n{container_logs.stdout}{container_logs.stderr}",
+                file=sys.stderr,
+                flush=True,
+            )
         return checks, flag_found, output
 
 

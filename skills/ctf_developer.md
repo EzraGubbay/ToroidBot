@@ -40,3 +40,4 @@ You receive source code from real challenges in the knowledge base. Use it:
 - The flag must not be discoverable by reading source code alone. Use `/flag.txt` read at runtime or similar patterns.
 - For compiled challenges, specify exact compiler flags needed (especially security-relevant ones like `-fno-stack-protector`, `-no-pie`, `-z execstack`).
 - Name files conventionally: `app.py`, `server.js`, `challenge.c`, etc.
+- **For Python challenges, always include `requirements.txt`** in the `files` dict, listing every third-party package the app imports. Use an empty file if the app uses only the standard library. The DevOps agent will `COPY` this file into the Docker image — if it is missing the build will fail.
