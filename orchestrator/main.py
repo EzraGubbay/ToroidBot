@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from dotenv import load_dotenv
 from agents.event_config import load_event_config
 from agents.schemas import CTFState
 from graph.pipeline import run_pipeline
+from orchestrator.budget import BudgetExhaustedError, fetch_balance, guard_budget, log_run
 from orchestrator.output import save_challenge
 
 _DEFAULT_MAX_RETRIES = 3
@@ -96,7 +98,42 @@ async def async_main() -> None:
         print(f"Event: {state.event.name}")
     print()
 
+    # Track OpenRouter spend when the API key is present.
+    _track_budget = bool(os.environ.get("OPENROUTER_API_KEY"))
+    _used_before: float = 0.0
+    _limit: float | None = None
+    if _track_budget:
+        try:
+            _used_before, _limit = await guard_budget()
+            _remaining = (_limit - _used_before) if _limit is not None else None
+            _bal_str = f"${_remaining:.2f} remaining" if _remaining is not None else "no limit"
+            print(f"[budget] OpenRouter balance: {_bal_str}", file=sys.stderr, flush=True)
+        except BudgetExhaustedError as exc:
+            print(f"[budget] HARD STOP — {exc}", file=sys.stderr)
+            sys.exit(2)
+
     state = await run_pipeline(state)
+
+    if _track_budget:
+        try:
+            _used_after, _ = await fetch_balance()
+            log_path = log_run(
+                prompt=args.prompt,
+                event_name=state.event.name if state.event else None,
+                used_before=_used_before,
+                used_after=_used_after,
+                limit=_limit,
+            )
+            _cost = _used_after - _used_before
+            _remaining_after = (_limit - _used_after) if _limit is not None else None
+            _rem_str = f"  ${_remaining_after:.2f} remaining" if _remaining_after is not None else ""
+            print(
+                f"[budget] Run cost: ${_cost:.4f}{_rem_str}  (log: {log_path})",
+                file=sys.stderr,
+                flush=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            print(f"[budget] Could not record usage: {exc}", file=sys.stderr)
 
     if state.validation and state.validation.passed:
         output_dir = save_challenge(state)
