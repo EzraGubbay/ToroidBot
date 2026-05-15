@@ -20,8 +20,8 @@ default_model: openrouter:anthropic/claude-sonnet-4-5
 models:
   # Strongest model for the hardest reasoning step.
   architect: openrouter:anthropic/claude-sonnet-4-5
-  # Latest OpenAI for code generation.
-  developer: openrouter:openai/gpt-4.1
+  # Claude for code generation — GPT-4.1 fails to populate files dict via structured output.
+  developer: openrouter:anthropic/claude-sonnet-4-5
   # Cheaper models for the well-bounded tasks.
   devops: openrouter:google/gemini-2.5-flash
   storyteller: openrouter:google/gemini-2.5-flash

@@ -51,6 +51,14 @@ async def run(state: CTFState) -> CTFState:
 
     prompt = _build_developer_prompt(state, rag_context)
     result = await agent.run(prompt)
+    code = result.output
 
-    state.code = result.output
+    if not code.files:
+        raise RuntimeError(
+            "Developer agent returned empty files dict — no source code was generated. "
+            "This usually indicates a structured-output failure with the chosen model. "
+            f"Model: {state.model_for('developer')}"
+        )
+
+    state.code = code
     return state
