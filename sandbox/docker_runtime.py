@@ -12,11 +12,13 @@ import logging
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
 
 log = logging.getLogger(__name__)
+
 
 from agents.schemas import CTFState, ValidationCheck
 
@@ -97,9 +99,14 @@ class DockerSandbox:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
 
-        (self.work_dir / "Dockerfile").write_text(
-            self.state.infra.dockerfile, encoding="utf-8"  # type: ignore[union-attr]
-        )
+        dockerfile = self.state.infra.dockerfile  # type: ignore[union-attr]
+        (self.work_dir / "Dockerfile").write_text(dockerfile, encoding="utf-8")
+
+        # Generate requirements.txt from the schema-enforced python_packages field.
+        pkgs = self.state.code.python_packages  # type: ignore[union-attr]
+        if pkgs or "requirements.txt" in dockerfile:
+            content = "\n".join(pkgs) + "\n" if pkgs else ""
+            (self.work_dir / "requirements.txt").write_text(content, encoding="utf-8")
 
     # ── lifecycle steps ─────────────────────────────────────────────────────
 
@@ -268,8 +275,6 @@ class DockerSandbox:
         _require(self.state.solver, "state.solver")
         checks: list[ValidationCheck] = []
 
-        import sys
-
         self.write_files()
         self._check_dockerfile_copies()
         print(f"[sandbox] work_dir={self.work_dir}  image={self.image_tag}", file=sys.stderr, flush=True)
@@ -323,7 +328,6 @@ class DockerSandbox:
             else f"expected {expected!r} not present in solver output",
         ))
         if not flag_found:
-            import sys
             print(
                 f"[sandbox] solver exit={solver_proc.returncode}\n"
                 f"[sandbox] stdout={solver_proc.stdout!r}\n"
