@@ -90,17 +90,38 @@ class DockerSandbox:
     # ── helpers ────────────────────────────────────────────────────────────
 
     @staticmethod
-    def available() -> bool:
-        """Return True iff a usable `docker` binary is on PATH and the daemon responds."""
+    def availability_error() -> str | None:
+        """Return None if Docker is reachable, else a one-line reason.
+
+        Uses `docker version --format` (a cheap daemon roundtrip) instead of
+        `docker info` (which fetches storage/network state and is slow under
+        load). The reason string is suitable for embedding in a validator
+        error list so failures aren't silent.
+        """
         if shutil.which("docker") is None:
-            return False
+            return "`docker` binary not on PATH"
         try:
             result = subprocess.run(
-                ["docker", "info"], capture_output=True, timeout=5
+                ["docker", "version", "--format", "{{.Server.Version}}"],
+                capture_output=True, timeout=10, text=True,
             )
-            return result.returncode == 0
-        except (subprocess.TimeoutExpired, OSError):
+        except subprocess.TimeoutExpired:
+            return "`docker version` timed out after 10s (daemon hung or starting up)"
+        except OSError as e:
+            return f"OSError running docker: {e}"
+        if result.returncode != 0:
+            stderr = result.stderr.strip() or "(no stderr)"
+            return f"`docker version` exited {result.returncode}: {stderr}"
+        return None
+
+    @staticmethod
+    def available() -> bool:
+        """Backwards-compatible boolean wrapper around availability_error()."""
+        reason = DockerSandbox.availability_error()
+        if reason is not None:
+            log.warning("DockerSandbox unavailable: %s", reason)
             return False
+        return True
 
     def _platform_args(self) -> list[str]:
         """Return ['--platform', 'linux/amd64'] if the Dockerfile FROM line requests it.

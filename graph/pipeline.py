@@ -1,7 +1,10 @@
 """Linear pipeline that chains agents: Architect → Storyteller → Developer → DevOps → Solver → Validator.
 
-On validation failure, the pipeline reruns either the Developer or just the Solver
-based on `state.validation.retry_target`.
+On validation failure, the pipeline reruns the appropriate stage based on
+`state.validation.retry_target`:
+- developer → developer + devops + solver
+- devops    → devops + solver
+- solver    → solver only
 """
 
 from __future__ import annotations
@@ -58,6 +61,17 @@ async def run_pipeline(state: CTFState) -> CTFState:
     while not (state.validation and state.validation.passed):
         if state.retry_count >= state.max_retries:
             break
+
+        # Persist the failing solver script before it is potentially overwritten
+        # by the next Solver run.
+        if state.solver is not None and state.validation and not state.validation.passed:
+            failed_script = state.solver.solve_script
+            if failed_script and (
+                not state.failed_solver_scripts
+                or state.failed_solver_scripts[-1] != failed_script
+            ):
+                state.failed_solver_scripts.append(failed_script)
+
         state.retry_count += 1
         print(
             f"[pipeline] retry {state.retry_count}/{state.max_retries} "
@@ -69,6 +83,10 @@ async def run_pipeline(state: CTFState) -> CTFState:
         target = state.validation.retry_target if state.validation else RetryTarget.DEVELOPER
         if target == RetryTarget.SOLVER:
             # Solve script was the problem; code/infra are fine.
+            state = await _run_step("solver", solver_node.run, state)
+        elif target == RetryTarget.DEVOPS:
+            # Infrastructure/build issue; keep code and regenerate infra + solve.
+            state = await _run_step("devops", devops_node.run, state)
             state = await _run_step("solver", solver_node.run, state)
         else:
             state = await _run_step("developer", developer_node.run, state)

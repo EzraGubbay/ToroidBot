@@ -28,6 +28,10 @@ dev = [
 ctf-poc = "orchestrator.main:main"
 ctf-index = "indexing.indexer:main"
 
+[tool.setuptools.packages.find]
+include = ["api*", "graph*", "agents*", "orchestrator*", "sandbox*", "indexing*"]
+exclude = ["tests*", "dataset*", "infrastructure*", "skills*", "output*"]
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
