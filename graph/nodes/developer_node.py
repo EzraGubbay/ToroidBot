@@ -70,5 +70,14 @@ async def run(state: CTFState) -> CTFState:
         if key.lower() in _devops_owned:
             del code.files[key]
 
+    # Strip solver-only packages from python_packages. The Developer sometimes lists
+    # exploit tools (pwntools, angr, z3-solver) that belong in the solve script, not
+    # the challenge image. Installing them bloats the image and can cause build timeouts.
+    _solver_packages = {"pwntools", "angr", "z3-solver", "z3", "capstone", "unicorn", "keystone-engine"}
+    if code.python_packages:
+        code.python_packages = [
+            p for p in code.python_packages if p.lower() not in _solver_packages
+        ]
+
     state.code = code
     return state

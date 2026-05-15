@@ -40,6 +40,10 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 - For challenges with `requirements.txt` or `package.json`, install dependencies in a separate layer.
 - If the challenge needs specific library versions (e.g., a particular glibc for pwn), pin them.
 
+### Keeping the Image Small
+- **Do NOT install exploit tools in the challenge image.** Tools like `pwntools`, `angr`, `z3-solver`, `gdb` (as a Python package), or any solver-side libraries have no place in the challenge image — they make builds slow (pwntools alone takes 2-4 min to compile) and bloat the image. The challenge image only needs what the challenge server itself runs. The sandbox installs solver dependencies separately.
+- For pwn challenges, the challenge image only needs: the compiled binary, `socat`, and minimal runtime dependencies (e.g. `libc6`). Do not install Python, pip, or any Python packages unless the challenge is a Python service.
+
 ### Networking
 - Web challenges: expose the HTTP port (typically 1337 or 8080).
 - Pwn challenges: use `socat` for simpler setup:
