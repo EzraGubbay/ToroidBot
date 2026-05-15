@@ -12,6 +12,27 @@ Your output is validated against the `ChallengeCode` Pydantic model. The JSON sc
 - `files`: include all source files needed to run the challenge — not just the vulnerable file
 - `intended_vulnerability`: be specific — name the file, function, and describe the exact flaw
 
+## The Architect's `intended_solve_path` is a hard contract
+
+The manifest contains `intended_solve_path` — a 3-6 step recipe of how the Solver will extract the flag. **Every step must be literally executable against your code.** Before you submit, walk through each step with your code open and verify it works.
+
+Examples of contract violations to avoid:
+- Path says "View page source and find HTML comment" → flag must be in the static HTML response, not injected by JavaScript after page load.
+- Path says "POST to /login with SQLi payload" → the `/login` route must exist and the SQL must be unsanitized.
+- Path says "Read /flag.txt via path traversal in /static/<file>" → the file-serving route must actually be vulnerable to traversal.
+
+## Single-Vulnerability Discipline
+
+Build exactly one intentional vulnerability: the one the Architect requested. Avoid adding any extra user-controlled injection points, alternate challenge surfaces, or hidden endpoints that the intended solve path does not mention. If the challenge uses SSTI or XSS, every other user-controlled field rendered into HTML must be escaped or handled safely so the solver only interacts with the intended flaw.
+
+Do not hardcode placeholder secrets such as `SECRET_KEY = 'your-secret-key-here'`. Read secrets from the environment or generate them at runtime.
+
+Do not wrap the vulnerable rendering path in a blanket `except Exception` that hides template or rendering errors. The solver must be able to observe the rendered output and debug the intended interaction.
+
+Keep route names, form field names, and solver-visible paths aligned with the manifest. Do not invent extra APIs, rename fields between retries, or silently substitute a different exploit surface.
+
+If the Architect's path is physically impossible (e.g. asks for a syscall that doesn't exist on the chosen language), implement the closest faithful equivalent and document the deviation in `intended_vulnerability`. Do not silently substitute a different solve path — the Solver is going to follow the manifest, and any mismatch will fail validation.
+
 ## How to Use the RAG Context
 
 You receive source code from real challenges in the knowledge base. Use it:
@@ -43,7 +64,18 @@ You receive source code from real challenges in the knowledge base. Use it:
       flag = f.read().strip()
   ```
   No fallback. No default value. Just read the file.
-- For compiled challenges, specify exact compiler flags needed (especially security-relevant ones like `-fno-stack-protector`, `-no-pie`, `-z execstack`).
+- For compiled challenges, specify exact compiler flags needed (especially security-relevant ones like `-fno-stack-protector`, `-no-pie`, `-z execstack`). When the Architect requests 32-bit (`-m32`), put `-m32` in the Makefile's `CFLAGS` (not just in build_notes) — DevOps will install `gcc-multilib` and `libc6-i386` only if the Makefile actually uses `-m32`.
+- **`gets()` does not exist in modern glibc** (removed in glibc 2.34+, default in Ubuntu 24.04 / Debian Trixie). If the manifest asks for a `gets()`-based overflow, do NOT call `gets(buf)` directly — compilation will fail with `implicit declaration of function 'gets'`. Use one of these instead, all of which still produce an unbounded-read vulnerability:
+  ```c
+  // Option A: read() with absurdly large size — most portable
+  read(0, buf, 1024);                                  // buf may be 32 bytes
+  // Option B: scanf with no width specifier — unbounded too
+  scanf("%s", buf);
+  // Option C: declare gets() yourself if you really want the function name
+  extern char *gets(char *);                           // bypass the missing prototype
+  gets(buf);
+  ```
+  Option A is preferred — it works on every modern toolchain and is what real CTF challenges use for "unbounded read into fixed-size buffer" vulnerabilities.
 - Name files conventionally: `app.py`, `server.js`, `challenge.c`, etc.
 - **Do NOT include a `Dockerfile` or `docker-compose.yml` in `files`** — those are DevOps's responsibility and will be overwritten anyway.
 - **Always populate `python_packages`** with every third-party pip package the **challenge server** imports (e.g. `["flask", "pyjwt"]`). Leave it empty for non-Python challenges, pwn/rev challenges (the challenge server is a binary, not Python), or apps that use only the standard library. **Never list solver or exploit tools** (`pwntools`, `angr`, `z3-solver`, etc.) here — those go in `ChallengeSolver.dependencies`, not in the challenge image. This field is used to auto-generate `requirements.txt` — do not also put `requirements.txt` in `files`.

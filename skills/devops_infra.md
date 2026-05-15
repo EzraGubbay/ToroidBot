@@ -39,6 +39,7 @@ Your output is validated against the `ChallengeInfra` Pydantic model. The JSON s
 - If the Developer specified compiler flags, use them exactly.
 - For challenges with `requirements.txt` or `package.json`, install dependencies in a separate layer.
 - If the challenge needs specific library versions (e.g., a particular glibc for pwn), pin them.
+- Keep startup and health-check behavior boring: do not introduce shell wrappers, background daemons, or health checks that can crash a perfectly good service before the Validator connects. The challenge should start by running `code.entry_point` directly unless the manifest explicitly requires extra processes.
 
 ### Keeping the Image Small
 - **Do NOT install exploit tools in the challenge image.** Tools like `pwntools`, `angr`, `z3-solver`, `gdb` (as a Python package), or any solver-side libraries have no place in the challenge image — they make builds slow (pwntools alone takes 2-4 min to compile) and bloat the image. The challenge image only needs what the challenge server itself runs. The sandbox installs solver dependencies separately.

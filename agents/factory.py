@@ -62,4 +62,8 @@ def create_agent(
         _build_model(model),
         output_type=output_type,
         system_prompt=system_prompt,
+        # pydantic-ai retries structured-output parse failures internally — bump
+        # from the default of 1 to 3 so a single malformed JSON (which happens on
+        # very long retry prompts) doesn't kill a multi-minute pipeline run.
+        output_retries=3,
     )

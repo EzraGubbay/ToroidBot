@@ -5,11 +5,13 @@ from __future__ import annotations
 import pytest
 
 from agents.event_config import EventConfig
-from agents.schemas import Category, ChallengeManifest, RetryTarget, ValidationCheck
+from agents.schemas import Category, ChallengeManifest, ChallengeCode, RetryTarget, ValidationCheck
 from graph.nodes.validator_node import (
     _decide_retry_target,
     _flag_in_source_check,
     _flag_matches_regex_check,
+    _masked_template_errors_check,
+    _secret_key_placeholder_check,
     _require_pipeline_outputs,
 )
 
@@ -38,12 +40,12 @@ def test_decide_retry_target_blames_solver_when_only_solver_checks_fail():
     assert _decide_retry_target(checks) == RetryTarget.SOLVER
 
 
-def test_decide_retry_target_blames_developer_when_build_fails():
+def test_decide_retry_target_blames_devops_when_build_fails():
     checks = [
         ValidationCheck(check="docker_build", passed=False, detail="syntax error"),
         ValidationCheck(check="solver_run", passed=False),
     ]
-    assert _decide_retry_target(checks) == RetryTarget.DEVELOPER
+    assert _decide_retry_target(checks) == RetryTarget.DEVOPS
 
 
 def test_decide_retry_target_defaults_to_developer_when_all_pass():
@@ -106,3 +108,37 @@ def test_flag_matches_regex_rejects_partial_match(state):
     check = _flag_matches_regex_check(state)
     assert check is not None
     assert not check.passed
+
+
+def test_secret_key_placeholder_check_flags_placeholder_secret(state):
+    state.code = ChallengeCode(
+        files={"app.py": "app.config['SECRET_KEY'] = 'your-secret-key-here'\n"},
+        entry_point="app.py",
+        flag_location="/flag.txt",
+        intended_vulnerability="x",
+    )
+    check = _secret_key_placeholder_check(state)
+    assert check is not None
+    assert not check.passed
+    assert "SECRET_KEY" in check.detail
+
+
+def test_masked_template_errors_check_flags_generic_exception_wrapper(state):
+    state.code = ChallengeCode(
+        files={
+            "app.py": (
+                "from flask import render_template_string\n"
+                "try:\n"
+                "    rendered = render_template_string(bio)\n"
+                "except Exception:\n"
+                "    return jsonify({'status': 'error', 'message': 'An error occurred while processing your request'})\n"
+            )
+        },
+        entry_point="app.py",
+        flag_location="/flag.txt",
+        intended_vulnerability="x",
+    )
+    check = _masked_template_errors_check(state)
+    assert check is not None
+    assert not check.passed
+    assert "masks template/rendering errors" in check.detail

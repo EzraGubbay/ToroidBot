@@ -74,7 +74,7 @@ class EventConfig(BaseModel):
     forbidden_techniques: list[str] = Field(default_factory=list)
     default_model: str = Field(default=DEFAULT_MODEL)
     models: PerAgentModels = Field(default_factory=PerAgentModels)
-    max_retries: int = Field(default=3, ge=0)
+    max_retries: int = Field(default=5, ge=0)
     use_sandbox: bool = Field(default=True)
     rag_top_k: int = Field(default=3, ge=1)
 

@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from agents.schemas import RetryTarget, ValidationCheck, ValidationResult
 from orchestrator import main as cli
 
 
@@ -77,3 +78,30 @@ def test_build_state_missing_config_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
         args = cli.parse_args_from(["prompt", "--config", str(tmp_path / "nope.yaml")])
         cli.build_state(args)
+
+
+def test_validation_failure_summary_includes_full_feedback(capsys):
+    state = cli.CTFState(user_prompt="prompt")
+    state.validation = ValidationResult(
+        passed=False,
+        flag_captured=False,
+        checks=[
+            ValidationCheck(check="sandbox_available", passed=False, detail="Docker unavailable"),
+            ValidationCheck(check="flag_not_in_source", passed=True, detail="ok"),
+        ],
+        errors=["Sandbox did not capture the expected flag"],
+        retry_instructions="Fix Docker first.",
+        retry_target=RetryTarget.DEVELOPER,
+    )
+    state.failed_solver_scripts = ["print('bad')"]
+
+    cli._print_validation_failure_summary(state)
+
+    captured = capsys.readouterr().err
+    assert "Validation summary:" in captured
+    assert "retry_target: developer" in captured
+    assert "failing checks:" in captured
+    assert "sandbox_available: Docker unavailable" in captured
+    assert "retry instructions:" in captured
+    assert "Fix Docker first." in captured
+    assert "failed solver scripts retained: 1" in captured
