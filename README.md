@@ -312,6 +312,14 @@ pytest tests/ -v   # E2E auto-skips if docker daemon isn't up
 ruff check .
 ```
 
+For a full pipeline run with saved progress logs and per-stage state snapshots, use:
+
+```bash
+uv run python scratch/run_full_pipeline_logged.py "Create a web challenge where the flag is hidden in the HTML source comments"
+```
+
+The script writes a timestamped run directory under `scratch/pipeline-runs/` with `run.log`, `stdout.log`, `stderr.log`, checkpoint JSON files, and the final pipeline state.
+
 See [`DEV.md`](DEV.md) for full architecture, RAG schema, and tech-stack rationale.
 See [`docs/superpowers/`](docs/superpowers/) for design specs and implementation plans.
 

@@ -11,6 +11,7 @@ Your output is validated against the `ChallengeManifest` Pydantic model. The JSO
 - `language`, `services`, `tools_required`: derive these from RAG examples, not a static list
 - `rag_references`: list the RAG challenge names you actually studied and drew from
 - `flag`: format `CTF{...}` unless the user specified otherwise
+- `intended_solve_path`: **REQUIRED**. The authoritative, ordered solve recipe — 3-6 concrete numbered steps. This is the contract both the Developer and the Solver must honor. If you write `1) View HTML source 2) Find <!-- Flag: ... --> comment 3) Extract flag`, then the Developer is forbidden from injecting the flag via client-side JS (which would break step 1), and the Solver is forbidden from writing an exploit that doesn't read static HTML. Be specific: name the HTTP path, the file, the input field, the syscall — whatever the solver actually interacts with. Vague paths like "exploit the SQLi" are not acceptable.
 
 ## How to Use the RAG Context
 

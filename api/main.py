@@ -1,5 +1,13 @@
+from pathlib import Path
+
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+# Load .env BEFORE importing the routers — the orchestrator service reads
+# USE_REAL_ORCHESTRATOR / OPENROUTER_API_KEY / GEMINI_API_KEY at import time
+# (module-level), so anything we want it to see must be in os.environ first.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from api.schemas import RootResponse
 

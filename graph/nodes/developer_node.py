@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from agents.factory import create_agent
 from agents.schemas import ChallengeCode, CTFState
-from orchestrator.rag import retrieve_similar_challenges
 
 
 def _build_developer_prompt(state: CTFState, rag_context: str) -> str:
@@ -19,6 +17,33 @@ def _build_developer_prompt(state: CTFState, rag_context: str) -> str:
         f"Similar challenges from knowledge base (study these for implementation patterns):\n{rag_context}",
     ]
 
+    solve_path = state.manifest.intended_solve_path.strip()
+    if solve_path:
+        parts.append(
+            "## HARD CONTRACT — intended_solve_path\n"
+            f"{solve_path}\n\n"
+            "Every numbered step must be literally executable against the code you "
+            "write. Walk through each step with your code open before submitting. "
+            "If a step says 'View HTML source and find <!-- Flag: ... -->', the flag "
+            "MUST be in the static HTML response — not injected by JS, not behind an "
+            "auth-gated endpoint, not assembled from fragments. Violations fail "
+            "validation and force a retry."
+        )
+
+    parts.append(
+        "## CHALLENGE SAFETY CONTRACT\n"
+        "Build exactly one intentional vulnerability: the one requested by the "
+        "manifest. Do not add extra user-controlled injection points, hidden APIs, "
+        "or alternate solve paths. If the intended flaw is SSTI, every other user-"
+        "controlled field rendered into HTML must be escaped or handled safely. Do "
+        "not hardcode placeholder secrets such as SECRET_KEY; read secrets from the "
+        "environment or generate them at runtime. Do not wrap the vulnerable "
+        "rendering path in a blanket exception handler that hides template errors; "
+        "the solver must be able to observe render output and debug the intended "
+        "interaction. Keep route names, form field names, and solver steps aligned "
+        "with the manifest so the challenge does not drift across retries."
+    )
+
     if state.event is not None and state.event.forbidden_techniques:
         techs = ", ".join(state.event.forbidden_techniques)
         parts.append(
@@ -26,16 +51,44 @@ def _build_developer_prompt(state: CTFState, rag_context: str) -> str:
             f"Forbidden techniques (do not use): {techs}"
         )
 
-    if state.validation and state.validation.retry_instructions:
-        parts.append(
-            f"PREVIOUS ATTEMPT FAILED. Fix these issues:\n{state.validation.retry_instructions}"
+    if state.validation and not state.validation.passed:
+        sections = ["## PREVIOUS ATTEMPT FAILED"]
+        if state.validation.errors:
+            sections.append("Concrete failures from the validator:")
+            sections.extend(f"  - {e}" for e in state.validation.errors)
+        if state.validation.retry_instructions:
+            sections.append("Fix instructions:")
+            sections.append(state.validation.retry_instructions)
+        # If we have the previous generated source, include a truncated copy
+        # so the Developer can modify only the failing parts instead of
+        # regenerating everything from scratch.
+        if getattr(state, "code", None) and state.code.files:
+            max_chars = 4096
+            sections.append("Previously generated files (each truncated to 4 KB):")
+            for fname, content in state.code.files.items():
+                key = fname.lower()
+                # Don't leak files that should never be included in prompts
+                if key in {"dockerfile", "docker-compose.yml", "docker-compose.yaml", "flag.txt"}:
+                    continue
+                snippet = content[:max_chars]
+                if len(content) > max_chars:
+                    snippet += "\n...[truncated]..."
+                sections.append(f"---\nFile: {fname}\n{snippet}\n---")
+
+        sections.append(
+            "Fix these specifically. Do not regenerate from scratch — preserve what "
+            "worked in the previous attempt and change only what the validator flagged."
         )
+        parts.append("\n".join(sections))
 
     return "\n\n".join(parts)
 
 
 async def run(state: CTFState) -> CTFState:
     """Run the Developer agent to produce ChallengeCode."""
+    from agents.factory import create_agent
+    from orchestrator.rag import retrieve_similar_challenges
+
     if state.manifest is None:
         raise RuntimeError("Architect must run before Developer")
     if state.story is None:

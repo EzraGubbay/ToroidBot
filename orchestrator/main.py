@@ -12,12 +12,47 @@ from dotenv import load_dotenv
 
 from agents.event_config import load_event_config
 from agents.schemas import CTFState, ValidationCheck
-from graph.pipeline import run_pipeline
 from orchestrator.budget import BudgetExhaustedError, fetch_balance, guard_budget, log_run
 from orchestrator.output import save_challenge
 
 _DEFAULT_MAX_RETRIES = 3
 _SENTINEL_MODEL = "__cli_default_model_unset__"
+
+
+def _print_validation_failure_summary(state: CTFState) -> None:
+    """Emit the full validator feedback so failures are actionable."""
+    if state.validation is None:
+        return
+
+    print("Validation summary:", file=sys.stderr)
+    print(f"  passed: {state.validation.passed}", file=sys.stderr)
+    print(f"  retry_target: {state.validation.retry_target.value}", file=sys.stderr)
+    print(f"  flag_captured: {state.validation.flag_captured}", file=sys.stderr)
+
+    if state.validation.errors:
+        print("  errors:", file=sys.stderr)
+        for error in state.validation.errors:
+            print(f"    - {error}", file=sys.stderr)
+
+    failing_checks = [check for check in state.validation.checks if not check.passed]
+    if failing_checks:
+        print("  failing checks:", file=sys.stderr)
+        for check in failing_checks:
+            print(f"    - {check.check}: {check.detail}", file=sys.stderr)
+
+    if state.validation.retry_instructions.strip():
+        print("  retry instructions:", file=sys.stderr)
+        for line in state.validation.retry_instructions.rstrip().splitlines():
+            print(f"    {line}", file=sys.stderr)
+
+    if state.failed_solver_scripts:
+        print(
+            f"  failed solver scripts retained: {len(state.failed_solver_scripts)}",
+            file=sys.stderr,
+        )
+    if state.validation.sandbox_output:
+        print("\n  --- sandbox output (last 1k chars) ---", file=sys.stderr)
+        print(state.validation.sandbox_output[-1000:], file=sys.stderr)
 
 
 def parse_args_from(argv: list[str]) -> argparse.Namespace:
@@ -168,6 +203,8 @@ async def async_main() -> None:
         return  # _run_sandbox_replay calls sys.exit
 
     # ── Normal pipeline mode ───────────────────────────────────────────────
+    from graph.pipeline import run_pipeline
+
     state = build_state(args)
 
     print(f"Generating challenge: {args.prompt}")
@@ -222,9 +259,7 @@ async def async_main() -> None:
         print(f"\nChallenge saved to: {output_dir}")
     else:
         print("\nChallenge generation failed after validation.", file=sys.stderr)
-        if state.validation:
-            for error in state.validation.errors:
-                print(f"  - {error}", file=sys.stderr)
+        _print_validation_failure_summary(state)
         sys.exit(1)
 
 

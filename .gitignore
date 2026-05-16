@@ -3,7 +3,9 @@ dataset/ico-tasks/finals
 dataset/build_rag.py
 dataset/ico-tasks
 dataset/build_rag.py
+ctf_poc.egg-info
 
+scratch/pipeline-runs
 # Python
 __pycache__/
 *.pyc

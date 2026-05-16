@@ -6,6 +6,7 @@ which is the full pipeline state passed between nodes.
 
 from __future__ import annotations
 
+import os
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
@@ -13,6 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 if TYPE_CHECKING:
     from agents.event_config import EventConfig
+
+# Built-in fallback when no CLI / event / DEFAULT_MODEL env override is set.
+# Gemini's free-tier daily quota (20/day on 2.5-flash) is too tight to be a
+# usable default; set DEFAULT_MODEL=openrouter:anthropic/claude-haiku-4-5 (or
+# similar) in .env to route through OpenRouter instead.
+_BUILTIN_DEFAULT_MODEL = "google-gla:gemini-2.5-flash"
 
 _VALID_AGENT_NAMES = {
     "architect", "storyteller", "developer", "devops", "solver", "validator",
@@ -37,6 +44,7 @@ class RetryTarget(str, Enum):
     """Which agent the Validator wants re-run on failure."""
 
     DEVELOPER = "developer"
+    DEVOPS = "devops"
     SOLVER = "solver"
 
 
@@ -59,6 +67,17 @@ class ChallengeManifest(BaseModel):
     flag: str = Field(description="The flag string, format CTF{...}")
     rag_references: list[str] = Field(
         default_factory=list, description="RAG challenge names used as inspiration"
+    )
+    intended_solve_path: str = Field(
+        default="",
+        description=(
+            "Authoritative, ordered solve recipe — 3-6 concrete steps the Solver "
+            "must follow and the Developer's code must enable. Example: '1) GET / "
+            "and inspect raw HTML 2) find <!-- Flag: ... --> comment 3) extract flag "
+            "via regex'. This is a hard contract: Developer must not implement the "
+            "challenge in a way that breaks any step (e.g. injecting the flag via JS "
+            "if step 1 says 'inspect raw HTML')."
+        ),
     )
 
 
@@ -135,7 +154,11 @@ class ValidationResult(BaseModel):
     )
     retry_target: RetryTarget = Field(
         default=RetryTarget.DEVELOPER,
-        description="Which agent to re-run on failure (developer or solver)",
+        description="Which agent to re-run on failure (developer, devops, or solver)",
+    )
+    sandbox_output: str = Field(
+        default="",
+        description="Captured sandbox STDOUT/STDERR output to aid debugging (kept short).",
     )
 
 
@@ -148,7 +171,10 @@ class CTFState(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     user_prompt: str
-    model: str = Field(default="google-gla:gemini-2.5-flash", description="Built-in default model")
+    model: str = Field(
+        default_factory=lambda: os.getenv("DEFAULT_MODEL", _BUILTIN_DEFAULT_MODEL),
+        description="Built-in default model (overridable via DEFAULT_MODEL env var)",
+    )
     use_sandbox: bool = Field(
         default=True,
         description="If True, the Validator runs the challenge in Docker. Disable for dry runs.",
@@ -162,9 +188,16 @@ class CTFState(BaseModel):
     infra: Optional[ChallengeInfra] = None
     solver: Optional[ChallengeSolver] = None
     validation: Optional[ValidationResult] = None
+    failed_solver_scripts: list[str] = Field(
+        default_factory=list,
+        description=(
+            "History of solver scripts from failed validation attempts. "
+            "Used to provide retry context to the Solver agent."
+        ),
+    )
 
     retry_count: int = 0
-    max_retries: int = 3
+    max_retries: int = 5
 
     def set_cli_model_override(self, model: str | None) -> None:
         """Called by the CLI when --model is explicitly passed. Highest precedence."""

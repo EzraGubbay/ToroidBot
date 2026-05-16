@@ -69,6 +69,16 @@ def test_validation_result_accepts_solver_retry_target():
     assert v.retry_target == RetryTarget.SOLVER
 
 
+def test_validation_result_accepts_devops_retry_target():
+    v = ValidationResult(passed=False, retry_target=RetryTarget.DEVOPS)
+    assert v.retry_target == RetryTarget.DEVOPS
+
+
+def test_ctf_state_tracks_failed_solver_scripts():
+    s = CTFState(user_prompt="x")
+    assert s.failed_solver_scripts == []
+
+
 def _state_with_event(**overrides) -> CTFState:
     cfg = EventConfig(
         name="t",

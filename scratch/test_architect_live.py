@@ -15,6 +15,7 @@ Run from the repo root:
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 from pathlib import Path
 
@@ -25,9 +26,39 @@ load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from agents.schemas import CTFState  # noqa: E402
 from graph.nodes import architect_node  # noqa: E402
+from orchestrator.rag import retrieve_similar_challenges  # noqa: E402
 
 AGENT_NAME = "Architect"
 USER_PROMPT = "a beginner crypto challenge involving caesar cipher"
+
+
+def _print_rag_matches(prompt: str, top_k: int = 3) -> None:
+    """Fetch and print RAG neighbors so live runs are debuggable."""
+    rag_context = retrieve_similar_challenges(prompt, top_k=top_k)
+
+    print("\n=== RAG retrieval (nearest matches) ===")
+    print(rag_context)
+
+    # Compact summary: title + id lines from the formatted RAG context.
+    title_re = re.compile(r"^###\s+(.+?)\s+\[[^\]]+\]$")
+    id_re = re.compile(r"^\*\*id:\*\*\s+`([^`]+)`$")
+    titles: list[str] = []
+    ids: list[str] = []
+    for line in rag_context.splitlines():
+        m_title = title_re.match(line.strip())
+        if m_title:
+            titles.append(m_title.group(1))
+            continue
+        m_id = id_re.match(line.strip())
+        if m_id:
+            ids.append(m_id.group(1))
+
+    if titles or ids:
+        print("\n=== RAG summary ===")
+        if titles:
+            print(f"names: {titles}")
+        if ids:
+            print(f"ids:   {ids}")
 
 
 def _seed_state() -> CTFState:
@@ -43,6 +74,8 @@ async def main() -> None:
     state = _seed_state()
     print(f">>> Running {AGENT_NAME} agent")
     print(f"    Seeded state: user_prompt={USER_PROMPT!r}")
+
+    _print_rag_matches(USER_PROMPT, top_k=3)
 
     state = await architect_node.run(state)
 
