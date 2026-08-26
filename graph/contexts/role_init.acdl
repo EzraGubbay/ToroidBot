@@ -1,0 +1,11 @@
+RolesFrag PipelineAgent[assistant_name] : {
+    S: {
+        GLOBAL_RULES
+        ROLE_DESCRIPTION(assistant_name)
+        SYSTEM_INSTRUCTIONS(assistant_name)
+    }
+    U: {
+        env.user_prompt
+        Frag CTFState[env.CTFState]
+    }
+}

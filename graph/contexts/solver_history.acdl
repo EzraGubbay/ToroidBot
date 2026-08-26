@@ -1,0 +1,4 @@
+StrFrag SolverHistory[doc]: {
+    env.solver.previous_solver_script[doc]
+    env.failed_solver_scripts[doc]
+}

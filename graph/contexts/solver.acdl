@@ -1,0 +1,31 @@
+Solver[@T]: {
+    Frag PipelineAgent[sys.assistant_name]
+    U: {
+        rag_retrieve(env.user_prompt, sys.manifest.category, sys.manifest.vulnerability)
+    }
+
+    If env.solve_path: {
+        U: {
+            env.solve_path
+            SOLVE_PATH_INSTRUCTION
+        }
+    }
+
+    If env.solver && env.validation && env.validation.passed: {
+        U: {
+            PREVIOUS_SOLVE_FAILED
+            env.solver.previous_solver_script
+            env.validation.errors
+            ForEach(c: env.validation.checks) {
+                Frag ValidationCheck[c]
+            }
+            ForEach(t: range(1, @T)) {
+                env.solver.failed_solver_scripts[@t]
+            }
+        }
+
+        S: {
+            REREAD_CODE_INSTRUCTION
+        }
+    }
+}

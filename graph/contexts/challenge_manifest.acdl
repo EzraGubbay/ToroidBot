@@ -1,0 +1,4 @@
+StrFrag ChallengeManifest[doc]: {
+    env.category[doc]
+    env.vulnerability[doc]
+}

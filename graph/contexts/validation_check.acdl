@@ -1,0 +1,4 @@
+StrFrag ValidationCheck[doc]: {
+    env.check_content[doc]
+    env.check_passed[doc]
+}

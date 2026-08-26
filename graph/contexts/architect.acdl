@@ -1,0 +1,20 @@
+Architect: {
+    S: {
+        GLOBAL_RULES
+        ROLE_DESCRIPTION(sys.assistant_name)
+        SYSTEM_INSTRUCTIONS(sys.assistant_name)
+    }
+    U: {
+        env.user_prompt
+        rag_retrieve(env.user_prompt)
+    }
+
+    If env.event_exists {
+        U: {
+            env.event_constraints
+            env.event_theme
+            env.forbidden_categories
+            env.forbidden_techniques
+        }
+    }
+}

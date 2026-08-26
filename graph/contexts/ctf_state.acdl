@@ -1,0 +1,8 @@
+StrFrag CTFState[doc]: {
+    Frag ChallengeManifest[env.challenge_manifest]
+    env.challenge_code[doc]
+    env.challenge_infra[doc]
+    env.solve_path[doc]
+    env.solver[doc]
+    Frag Validation[env.validation[doc]]
+}
